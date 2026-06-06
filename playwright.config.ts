@@ -1,13 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
 
-const e2eReceiptText = [
-  'E2E MARKET',
-  '06/06/2026',
-  'APPLES £2.40',
-  'OAT MILK £3.10',
-  'TOTAL £5.50',
-].join('\\n')
-
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
@@ -19,7 +11,7 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   webServer: {
-    command: `VITE_TEST_OCR_TEXT="${e2eReceiptText}" npm run dev:e2e`,
+    command: 'npm run dev:e2e',
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
