@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import path from 'node:path'
 
-test('extracts a receipt, edits rows, saves to Google Sheets, and exports Excel', async ({ page }) => {
+test('extracts a receipt, edits rows, saves to Google Sheets, and exports CSV', async ({ page }) => {
   const sheetRequests: unknown[] = []
 
   await page.route('https://script.google.com/**', async (route) => {
@@ -22,11 +22,9 @@ test('extracts a receipt, edits rows, saves to Google Sheets, and exports Excel'
   await page.getByTestId('receipt-upload').setInputFiles(
     path.join(process.cwd(), 'tests/e2e/fixtures/receipt.png'),
   )
-  await expect(page.getByAltText('Captured receipt')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Extract' }).click()
   await expect(page.getByTestId('receipt-status')).toContainText('2 rows ready')
-  await expect(page.getByLabel('Merchant')).toHaveValue('E2e Market')
+  await expect(page.getByLabel('Store')).toHaveValue('E2e Market')
   await expect(page.getByTestId('item-row').first().getByLabel('Item')).toHaveValue('Apples')
   await expect(page.getByTestId('item-row').nth(1).getByLabel('Item')).toHaveValue('Oat Milk')
   await expect(page.getByText('£5.50').first()).toBeVisible()
@@ -35,9 +33,9 @@ test('extracts a receipt, edits rows, saves to Google Sheets, and exports Excel'
   await firstRow.getByLabel('Item').fill('Pink Lady Apples')
   await firstRow.getByLabel('Price').fill('2.55')
 
-  await page.getByLabel('Apps Script URL').fill('https://script.google.com/macros/s/e2e/exec')
+  await page.getByLabel('Google Sheet link').fill('https://script.google.com/macros/s/e2e/exec')
   await page.getByLabel('Sheet tab').fill('E2E Receipts')
-  await page.getByRole('button', { name: 'Save to Sheet' }).click()
+  await page.getByRole('button', { name: 'Save to Google Sheet' }).click()
 
   await expect(page.getByTestId('receipt-status')).toContainText('Saved to Google Sheet')
   expect(sheetRequests).toHaveLength(1)
@@ -57,6 +55,6 @@ test('extracts a receipt, edits rows, saves to Google Sheets, and exports Excel'
   })
 
   const download = page.waitForEvent('download')
-  await page.getByRole('button', { name: 'Download XLS' }).click()
-  expect((await download).suggestedFilename()).toMatch(/receipt-.+\.xls/)
+  await page.getByRole('button', { name: 'Download CSV' }).click()
+  expect((await download).suggestedFilename()).toMatch(/receipt-.+\.csv/)
 })
