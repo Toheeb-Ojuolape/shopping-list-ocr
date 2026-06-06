@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
 import { afterEach, vi } from 'vitest'
 
-if (!window.matchMedia) {
+if (typeof window !== 'undefined' && !window.matchMedia) {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     value: vi.fn().mockImplementation((query: string) => ({
@@ -18,10 +18,12 @@ if (!window.matchMedia) {
   })
 }
 
-Object.defineProperty(HTMLMediaElement.prototype, 'play', {
-  configurable: true,
-  value: vi.fn().mockResolvedValue(undefined),
-})
+if (typeof HTMLMediaElement !== 'undefined') {
+  Object.defineProperty(HTMLMediaElement.prototype, 'play', {
+    configurable: true,
+    value: vi.fn().mockResolvedValue(undefined),
+  })
+}
 
 afterEach(() => {
   cleanup()

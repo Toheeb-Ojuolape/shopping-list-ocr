@@ -3,6 +3,7 @@ const sheetsScope = 'https://www.googleapis.com/auth/spreadsheets'
 
 type TokenResponse = {
   access_token?: string
+  expires_in?: number
   error?: string
   error_description?: string
 }
@@ -31,8 +32,34 @@ declare global {
 }
 
 let loadGoogleIdentityPromise: Promise<void> | undefined
+const cachedTokenKey = 'receipt-google-access-token'
+const cachedTokenExpiryKey = 'receipt-google-access-token-expires-at'
 
-export async function requestGoogleSheetsAccessToken(clientId: string): Promise<string> {
+export type GoogleTokenRequestOptions = {
+  prompt?: 'consent' | ''
+}
+
+export function getCachedGoogleSheetsAccessToken(): string {
+  const token = localStorage.getItem(cachedTokenKey) ?? ''
+  const expiresAt = Number(localStorage.getItem(cachedTokenExpiryKey) ?? 0)
+
+  if (!token || !Number.isFinite(expiresAt) || Date.now() >= expiresAt) {
+    clearCachedGoogleSheetsAccessToken()
+    return ''
+  }
+
+  return token
+}
+
+export async function requestGoogleSheetsAccessToken(
+  clientId: string,
+  options: GoogleTokenRequestOptions = {},
+): Promise<string> {
+  const cachedToken = getCachedGoogleSheetsAccessToken()
+  if (cachedToken) {
+    return cachedToken
+  }
+
   const trimmedClientId = clientId.trim()
   if (!trimmedClientId) {
     throw new Error('Add VITE_GOOGLE_CLIENT_ID before saving to Google Sheets.')
@@ -55,6 +82,7 @@ export async function requestGoogleSheetsAccessToken(clientId: string): Promise<
           return
         }
 
+        cacheGoogleSheetsAccessToken(response.access_token, response.expires_in)
         resolve(response.access_token)
       },
     })
@@ -64,11 +92,13 @@ export async function requestGoogleSheetsAccessToken(clientId: string): Promise<
       return
     }
 
-    tokenClient.requestAccessToken({ prompt: 'consent' })
+    tokenClient.requestAccessToken({ prompt: options.prompt ?? 'consent' })
   })
 }
 
 export function revokeGoogleAccessToken(accessToken: string): Promise<void> {
+  clearCachedGoogleSheetsAccessToken()
+
   if (!accessToken || !window.google?.accounts?.oauth2?.revoke) {
     return Promise.resolve()
   }
@@ -76,6 +106,17 @@ export function revokeGoogleAccessToken(accessToken: string): Promise<void> {
   return new Promise((resolve) => {
     window.google?.accounts?.oauth2?.revoke(accessToken, resolve)
   })
+}
+
+function cacheGoogleSheetsAccessToken(accessToken: string, expiresIn = 3600): void {
+  const expiresAt = Date.now() + Math.max(60, expiresIn - 60) * 1000
+  localStorage.setItem(cachedTokenKey, accessToken)
+  localStorage.setItem(cachedTokenExpiryKey, String(expiresAt))
+}
+
+function clearCachedGoogleSheetsAccessToken(): void {
+  localStorage.removeItem(cachedTokenKey)
+  localStorage.removeItem(cachedTokenExpiryKey)
 }
 
 function loadGoogleIdentity(): Promise<void> {

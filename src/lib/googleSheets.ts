@@ -47,6 +47,8 @@ const sheetHeaders = [
   'Receipt Total',
 ]
 
+const sheetColumnCount = sheetHeaders.length
+
 export function buildSheetRows(
   extraction: ReceiptExtraction,
   capturedAt = new Date().toISOString(),
@@ -100,12 +102,7 @@ export async function appendReceiptToGoogleSheet(
 
   await ensureSheetExists(spreadsheetId, sheetName, accessToken)
   await ensureHeaderRow(spreadsheetId, sheetName, accessToken)
-  await appendValues(
-    spreadsheetId,
-    sheetName,
-    buildSheetRows(extraction).map(sheetRowToValues),
-    accessToken,
-  )
+  await appendValues(spreadsheetId, sheetName, buildReceiptAppendValues(extraction), accessToken)
 }
 
 export function parseSpreadsheetId(sheetUrl: string): string {
@@ -143,6 +140,19 @@ export function sheetRowToValues(row: SheetRow): Array<string | number> {
     row.totalPrice,
     row.currency,
     row.receiptTotal,
+  ]
+}
+
+export function buildReceiptAppendValues(
+  extraction: ReceiptExtraction,
+  capturedAt = new Date().toISOString(),
+): Array<Array<string | number>> {
+  const savedDate = capturedAt.slice(0, 10)
+
+  return [
+    Array.from({ length: sheetColumnCount }, () => ''),
+    [`New receipt - ${savedDate}`, capturedAt, extraction.merchant, '', '', '', '', '', '', ''],
+    ...buildSheetRows(extraction, capturedAt).map(sheetRowToValues),
   ]
 }
 

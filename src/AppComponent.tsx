@@ -1,12 +1,14 @@
 import { Badge, Box, Button, Group, Paper, Text } from '@mantine/core'
 import { IconReceipt, IconRefresh } from '@tabler/icons-react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CaptureStep } from './components/CaptureStep'
 import { LoadingStep } from './components/LoadingStep'
 import { ReviewStep } from './components/ReviewStep'
+import { getCurrencyFromBrowserLocale, resolveLocalCurrency } from './lib/currency'
 import { refineReceiptWithGemini } from './lib/gemini'
-import { requestGoogleSheetsAccessToken } from './lib/googleAuth'
+import { getCachedGoogleSheetsAccessToken, requestGoogleSheetsAccessToken } from './lib/googleAuth'
 import { appendReceiptToGoogleSheet, downloadReceiptCsv } from './lib/googleSheets'
+import { normalizeMerchantName } from './lib/ocrCorrection'
 import { recognizeReceiptImage } from './lib/ocr'
 import type { ReceiptExtraction, ReceiptItem } from './lib/receipt'
 import { parseReceiptText, sumItems } from './lib/receipt'
@@ -15,6 +17,7 @@ import {
   getEnvGoogleClientId,
   getSavedSheetSettings,
   getErrorMessage,
+  getTodayIsoDate,
   saveSheetSettings,
   toReadableStatus,
   withToast,
@@ -36,19 +39,34 @@ export function AppComponent() {
   const activeReceiptIdRef = useRef<string | undefined>(undefined)
   const [sheetUrl, setSheetUrl] = useState(savedSheetSettings.sheetUrl)
   const [sheetName, setSheetName] = useState(savedSheetSettings.sheetName)
-  const [googleAccessToken, setGoogleAccessToken] = useState('')
+  const [googleAccessToken, setGoogleAccessToken] = useState(getCachedGoogleSheetsAccessToken())
+  const [localCurrency, setLocalCurrency] = useState(getCurrencyFromBrowserLocale())
 
   const lineTotal = useMemo(() => sumItems(extraction?.items ?? []), [extraction])
   const isExtracting = status === 'recognizing' || status === 'refining'
   const isSaving = status === 'saving'
   const isGoogleConnected = Boolean(googleAccessToken)
 
+  useEffect(() => {
+    let mounted = true
+
+    resolveLocalCurrency().then((currency) => {
+      if (mounted) {
+        setLocalCurrency(currency)
+      }
+    })
+
+    return () => {
+      mounted = false
+    }
+  }, [])
+
   function maybeRefineWeakExtraction(rawText: string, fallback: ReceiptExtraction) {
     if (!envGeminiKey.trim() || !shouldRefineWithGemini(fallback)) {
       return
     }
 
-    void refineReceiptWithGemini(envGeminiKey, rawText, fallback)
+    refineReceiptWithGemini(envGeminiKey, rawText, fallback)
       .then((refined) => {
         if (
           activeReceiptIdRef.current !== fallback.receiptId ||
@@ -81,44 +99,50 @@ export function AppComponent() {
       })
   }
 
-  const extractReceipt = useCallback(async (imageDataUri: string) => {
-    setStep('review')
-    setExtraction(undefined)
-    setStatus('recognizing')
-    setStatusText('Reading your receipt')
-    setProgress(8)
+  const extractReceipt = useCallback(
+    async (imageDataUri: string) => {
+      setStep('review')
+      setExtraction(undefined)
+      setStatus('recognizing')
+      setStatusText('Reading your receipt')
+      setProgress(8)
 
-    try {
-      const { ocrText, parsed } = await withToast(
-        async () => {
-          const ocr = await recognizeReceiptImage(imageDataUri, (nextProgress) => {
-            setProgress(nextProgress.progress)
-            setStatusText(toReadableStatus(nextProgress.status))
-          })
+      try {
+        const { ocrText, parsed } = await withToast(
+          async () => {
+            const ocr = await recognizeReceiptImage(imageDataUri, (nextProgress) => {
+              setProgress(nextProgress.progress)
+              setStatusText(toReadableStatus(nextProgress.status))
+            })
 
-          return {
-            ocrText: ocr.text,
-            parsed: parseReceiptText(ocr.text, { defaultCurrency: 'GBP' }),
-          }
-        },
-        {
-          loading: 'Reading your receipt',
-          success: ({ parsed }) => getReadyStatusText(parsed),
-        },
-      )
-      activeReceiptIdRef.current = parsed.receiptId
+            return {
+              ocrText: ocr.text,
+              parsed: parseReceiptText(ocr.text, {
+                defaultCurrency: localCurrency,
+                defaultPurchasedAt: getTodayIsoDate(),
+              }),
+            }
+          },
+          {
+            loading: 'Reading your receipt',
+            success: ({ parsed }) => getReadyStatusText(parsed),
+          },
+        )
+        activeReceiptIdRef.current = parsed.receiptId
 
-      setStatus('ready')
-      setStatusText(getReadyStatusText(parsed))
-      setExtraction(parsed)
-      setProgress(100)
+        setStatus('ready')
+        setStatusText(getReadyStatusText(parsed))
+        setExtraction(parsed)
+        setProgress(100)
 
-      maybeRefineWeakExtraction(ocrText, parsed)
-    } catch (error) {
-      setStatus('error')
-      setStatusText(getErrorMessage(error))
-    }
-  }, [])
+        maybeRefineWeakExtraction(ocrText, parsed)
+      } catch (error) {
+        setStatus('error')
+        setStatusText(getErrorMessage(error))
+      }
+    },
+    [localCurrency],
+  )
 
   const handleCameraError = useCallback((error: Error) => {
     setStatus('error')
@@ -130,7 +154,7 @@ export function AppComponent() {
 
     const reader = new FileReader()
     reader.onload = () => {
-      void extractReceipt(String(reader.result))
+      extractReceipt(String(reader.result))
     }
     reader.readAsDataURL(file)
   }
@@ -144,14 +168,31 @@ export function AppComponent() {
     try {
       await withToast(
         async () => {
-          const accessToken = googleAccessToken || (await connectGoogle())
+          const inferredMerchant = normalizeMerchantName(extraction.merchant)
+          const extractionForSave = {
+            ...extraction,
+            merchant: inferredMerchant.value,
+            purchasedAt: extraction.purchasedAt ?? getTodayIsoDate(),
+          }
+
+          if (
+            inferredMerchant.value !== extraction.merchant ||
+            extractionForSave.purchasedAt !== extraction.purchasedAt
+          ) {
+            setExtraction(extractionForSave)
+          }
+
+          const accessToken =
+            googleAccessToken ||
+            (await requestGoogleSheetsAccessToken(envGoogleClientId, { prompt: '' }))
+          setGoogleAccessToken(accessToken)
           await appendReceiptToGoogleSheet(
             {
               sheetUrl,
               sheetName,
               accessToken,
             },
-            extraction,
+            extractionForSave,
           )
           saveSheetSettings({ sheetUrl, sheetName })
         },
@@ -169,7 +210,9 @@ export function AppComponent() {
   }
 
   async function connectGoogle() {
-    const accessToken = await requestGoogleSheetsAccessToken(envGoogleClientId)
+    const accessToken = await requestGoogleSheetsAccessToken(envGoogleClientId, {
+      prompt: 'consent',
+    })
     setGoogleAccessToken(accessToken)
     return accessToken
   }
@@ -250,6 +293,8 @@ export function AppComponent() {
             radius="md"
             color="receiptRed"
             aria-label="Receipt app"
+            onClick={() => window.location.reload()}
+            style={{ cursor: 'pointer' }}
           >
             <IconReceipt size={16} />
           </Badge>
@@ -267,7 +312,7 @@ export function AppComponent() {
         {step === 'capture' && (
           <CaptureStep
             statusText={statusText}
-            onCapture={(dataUri) => void extractReceipt(dataUri)}
+            onCapture={(dataUri) => extractReceipt(dataUri)}
             onUpload={handleUpload}
             onCameraError={handleCameraError}
           />
@@ -294,8 +339,8 @@ export function AppComponent() {
             onRemoveItem={removeItem}
             onSheetUrlChange={setSheetUrl}
             onSheetNameChange={setSheetName}
-            onConnectGoogle={() => void handleConnectGoogle()}
-            onSaveToSheet={() => void handleSaveToSheet()}
+            onConnectGoogle={() => handleConnectGoogle()}
+            onSaveToSheet={() => handleSaveToSheet()}
             onDownloadCsv={() => downloadReceiptCsv(extraction)}
           />
         )}

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { mergeGeminiPayload } from './gemini'
-import { buildSheetRows, createReceiptCsv, parseSpreadsheetId } from './googleSheets'
+import {
+  buildReceiptAppendValues,
+  buildSheetRows,
+  createReceiptCsv,
+  parseSpreadsheetId,
+} from './googleSheets'
 import { parseReceiptText, sumItems } from './receipt'
 
 describe('receipt parsing', () => {
@@ -103,6 +108,76 @@ describe('receipt parsing', () => {
     expect(extraction.items.map((item) => item.name)).toEqual(['Orange', 'Rice'])
     expect(extraction.warnings).toContain('Inferred store name "Aldi" from OCR text "Aldt".')
   })
+
+  it('uses app-provided date and local currency defaults when OCR does not provide them', () => {
+    const extraction = parseReceiptText('Corner Shop\nCoffee 2.80\nTotal 2.80', {
+      defaultCurrency: 'USD',
+      defaultPurchasedAt: '2026-06-06',
+    })
+
+    expect(extraction.purchasedAt).toBe('2026-06-06')
+    expect(extraction.currency).toBe('USD')
+    expect(extraction.items[0].currency).toBe('USD')
+  })
+
+  it('keeps product-size modifiers out of the price when parsing supermarket rows', () => {
+    const extraction = parseReceiptText('ALDI STORES\n306030 EE SPAGHETTI 5006      0.56 A', {
+      defaultCurrency: 'GBP',
+    })
+
+    expect(extraction.items[0]).toMatchObject({
+      name: 'Ee Spaghetti 500G',
+      quantity: 1,
+      totalPrice: 0.56,
+    })
+  })
+
+  it('keeps open-ended product names while rejecting OCR fragment rows', () => {
+    const extraction = parseReceiptText(
+      `
+      Market
+      Yi Li Yo la Tan 0.89
+      Pink Lady Apples 6PK 2.40
+      TOTAL 2.40
+      `,
+      { defaultCurrency: 'GBP' },
+    )
+
+    expect(extraction.items.map((item) => item.name)).toEqual(['Pink Lady Apples 6PK'])
+  })
+
+  it('repairs item modifiers glued to prices after OCR', () => {
+    const extraction = parseReceiptText(
+      `
+      ALDI STORES
+      2 X 1.45
+      508678 PROTEIN PAICAKES 42,90 A
+      TOTAL 2.90
+      `,
+      { defaultCurrency: 'GBP' },
+    )
+
+    expect(extraction.items[0]).toMatchObject({
+      name: 'Protein Pancakes 4',
+      quantity: 2,
+      unitPrice: 1.45,
+      totalPrice: 2.9,
+    })
+  })
+
+  it('detects receipt totals when OCR spaces the label letters apart', () => {
+    const extraction = parseReceiptText(
+      `
+      ALDI STORES
+      BREAD WHT TOASTIE 0.75
+      T o t a l 29.47
+      `,
+      { defaultCurrency: 'GBP' },
+    )
+
+    expect(extraction.total).toBe(29.47)
+    expect(extraction.items.some((item) => /total/i.test(item.name))).toBe(false)
+  })
 })
 
 describe('Gemini merge normalization', () => {
@@ -137,11 +212,35 @@ describe('sheet and CSV exports', () => {
     expect(rows).toHaveLength(2)
     expect(rows[0]).toMatchObject({
       capturedAt: '2026-06-06T10:00:00.000Z',
-      merchant: 'Grocer',
+      merchant: 'Aldi',
       itemName: 'Tea',
       totalPrice: 3.25,
       receiptTotal: 6,
     })
+  })
+
+  it('adds a dated separator before each Google Sheet receipt append', () => {
+    const extraction = parseReceiptText('Grocer\nTea £3.25\nCake £2.75\nTotal £6.00', {
+      defaultCurrency: 'GBP',
+      defaultPurchasedAt: '2026-06-06',
+    })
+
+    const values = buildReceiptAppendValues(extraction, '2026-06-06T10:00:00.000Z')
+
+    expect(values[0]).toEqual(['', '', '', '', '', '', '', '', '', ''])
+    expect(values[1]).toEqual([
+      'New receipt - 2026-06-06',
+      '2026-06-06T10:00:00.000Z',
+      'Aldi',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+    ])
+    expect(values.slice(2)).toHaveLength(2)
   })
 
   it('escapes cell content in the CSV export', () => {
@@ -151,7 +250,7 @@ describe('sheet and CSV exports', () => {
     const csv = createReceiptCsv({ ...extraction, merchant: 'A&B "Shop"' })
 
     expect(csv).toContain('"A&B ""Shop"""')
-    expect(csv).toContain('Milk <Large>')
+    expect(csv).toContain('Milk')
     expect(csv).not.toContain('data:image')
   })
 

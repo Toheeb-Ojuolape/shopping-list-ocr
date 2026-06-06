@@ -54,10 +54,14 @@ export function formatMoney(value: number, currency: CurrencyCode): string {
     return value.toFixed(2)
   }
 
-  return new Intl.NumberFormat(undefined, {
-    style: 'currency',
-    currency,
-  }).format(value)
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency,
+    }).format(value)
+  } catch {
+    return value.toFixed(2)
+  }
 }
 
 export const handleSuccess = (message: string) => {
@@ -127,3 +131,10 @@ export function withToast<T>(
     error: messages.error ?? getErrorMessage,
   })
 }
+
+export function getTodayIsoDate(date = new Date()): string {
+  const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return offsetDate.toISOString().slice(0, 10)
+}
+
+export const today = getTodayIsoDate()
