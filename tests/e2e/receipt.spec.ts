@@ -1,7 +1,9 @@
 import { expect, test } from '@playwright/test'
 import path from 'node:path'
 
-test('extracts a receipt, edits rows, saves to Google Sheets, and exports CSV', async ({ page }) => {
+test('extracts a receipt, edits rows, saves to Google Sheets, and exports CSV', async ({
+  page,
+}) => {
   const sheetRequests: unknown[] = []
 
   await page.route('https://accounts.google.com/gsi/client', async (route) => {
@@ -64,9 +66,9 @@ test('extracts a receipt, edits rows, saves to Google Sheets, and exports CSV', 
 
   await page.goto('/')
 
-  await page.getByTestId('receipt-upload').setInputFiles(
-    path.join(process.cwd(), 'tests/e2e/fixtures/receipt.png'),
-  )
+  await page
+    .getByTestId('receipt-upload')
+    .setInputFiles(path.join(process.cwd(), 'tests/e2e/fixtures/receipt.png'))
 
   await expect(page.getByTestId('receipt-status')).toContainText('2 rows ready')
   await expect(page.getByLabel('Store')).toHaveValue('E2e Market')
@@ -78,7 +80,9 @@ test('extracts a receipt, edits rows, saves to Google Sheets, and exports CSV', 
   await firstRow.getByLabel('Item').fill('Pink Lady Apples')
   await firstRow.getByLabel('Price').fill('2.55')
 
-  await page.getByLabel('Google Sheet link').fill('https://docs.google.com/spreadsheets/d/e2e-sheet-id/edit')
+  await page
+    .getByLabel('Google Sheet link')
+    .fill('https://docs.google.com/spreadsheets/d/e2e-sheet-id/edit')
   await page.getByLabel('Sheet tab').fill('E2E Receipts')
   await page.getByRole('button', { name: 'Save to Google Sheet' }).click()
 

@@ -263,11 +263,7 @@ function quoteSheetName(sheetName: string): string {
   return `'${sheetName.replace(/'/g, "''")}'`
 }
 
-async function fetchJson<T>(
-  url: string,
-  accessToken: string,
-  init: RequestInit = {},
-): Promise<T> {
+async function fetchJson<T>(url: string, accessToken: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(url, {
     ...init,
     headers: {

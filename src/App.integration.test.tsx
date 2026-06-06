@@ -49,14 +49,18 @@ describe('App integration', () => {
 
     uploadReceiptImage()
 
-    await waitFor(() => expect(screen.getByTestId('receipt-status')).toHaveTextContent('2 rows ready'))
+    await waitFor(() =>
+      expect(screen.getByTestId('receipt-status')).toHaveTextContent('2 rows ready'),
+    )
     expect(screen.getByDisplayValue('Fresh Mart')).toBeInTheDocument()
     expect(screen.getByDisplayValue('Bananas')).toBeInTheDocument()
     expect(screen.getByDisplayValue('Oat Milk')).toBeInTheDocument()
     expect(screen.getByText('£5.75')).toBeInTheDocument()
 
     const firstRow = screen.getAllByTestId('item-row')[0]
-    fireEvent.change(within(firstRow).getByLabelText('Item'), { target: { value: 'Organic Bananas' } })
+    fireEvent.change(within(firstRow).getByLabelText('Item'), {
+      target: { value: 'Organic Bananas' },
+    })
     fireEvent.change(within(firstRow).getByLabelText('Price'), { target: { value: '1.50' } })
 
     fireEvent.change(screen.getByLabelText('Google Sheet link'), {
@@ -80,23 +84,33 @@ describe('App integration', () => {
       }),
     )
 
-    await waitFor(() => expect(screen.getByTestId('receipt-status')).toHaveTextContent('Saved to Google Sheet'))
+    await waitFor(() =>
+      expect(screen.getByTestId('receipt-status')).toHaveTextContent('Saved to Google Sheet'),
+    )
 
     fireEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
-    expect(downloadReceiptCsvMock).toHaveBeenCalledWith(expect.objectContaining({ merchant: 'Fresh Mart' }))
+    expect(downloadReceiptCsvMock).toHaveBeenCalledWith(
+      expect.objectContaining({ merchant: 'Fresh Mart' }),
+    )
   })
 
   it('shows a useful error when saving without a Google Sheets link', async () => {
-    appendReceiptToGoogleSheetMock.mockRejectedValue(new Error('Add your Google Sheet link before saving.'))
+    appendReceiptToGoogleSheetMock.mockRejectedValue(
+      new Error('Add your Google Sheet link before saving.'),
+    )
 
     render(<App />)
 
     uploadReceiptImage()
-    await waitFor(() => expect(screen.getByTestId('receipt-status')).toHaveTextContent('2 rows ready'))
+    await waitFor(() =>
+      expect(screen.getByTestId('receipt-status')).toHaveTextContent('2 rows ready'),
+    )
     fireEvent.click(screen.getByRole('button', { name: 'Save to Google Sheet' }))
 
     await waitFor(() =>
-      expect(screen.getByTestId('receipt-status')).toHaveTextContent('Add your Google Sheet link before saving.'),
+      expect(screen.getByTestId('receipt-status')).toHaveTextContent(
+        'Add your Google Sheet link before saving.',
+      ),
     )
   })
 

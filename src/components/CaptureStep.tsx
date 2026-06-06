@@ -11,14 +11,21 @@ type CaptureStepProps = {
 
 export function CaptureStep({ statusText, onCapture, onUpload, onCameraError }: CaptureStepProps) {
   return (
-    <Paper component="section" className="screen-card capture-screen" shadow="none" aria-label="Capture receipt">
+    <Paper
+      component="section"
+      className="screen-card capture-screen"
+      shadow="none"
+      aria-label="Capture receipt"
+    >
       <Group className="mobile-top" align="flex-start" gap="sm" wrap="nowrap">
         <ThemeIcon className="step-dot" color="receiptRed" radius="xl" size={34}>
           <IconScan size={18} />
         </ThemeIcon>
         <Stack gap={2}>
           <Text className="step-kicker">Scan receipt</Text>
-          <Title style={{marginTop: "-5px"}} order={5}>Place the receipt in frame</Title>
+          <Title style={{ marginTop: '-5px' }} order={5}>
+            Place the receipt in frame
+          </Title>
         </Stack>
       </Group>
 
@@ -32,7 +39,7 @@ export function CaptureStep({ statusText, onCapture, onUpload, onCameraError }: 
         </div>
       </div>
 
-      <Stack py={"sm"}>
+      <Stack py={'sm'}>
         <Text c="dimmed">{statusText}</Text>
         <Button
           component="label"

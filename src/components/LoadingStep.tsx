@@ -8,9 +8,20 @@ type LoadingStepProps = {
 
 export function LoadingStep({ statusText, progress }: LoadingStepProps) {
   return (
-    <Paper component="section" className="screen-card loading-screen" shadow="none" aria-label="Reading receipt">
+    <Paper
+      component="section"
+      className="screen-card loading-screen"
+      shadow="none"
+      aria-label="Reading receipt"
+    >
       <Stack align="center" gap="sm">
-        <ThemeIcon className="loading-pulse" color="receiptRed" variant="light" size={78} radius={24}>
+        <ThemeIcon
+          className="loading-pulse"
+          color="receiptRed"
+          variant="light"
+          size={78}
+          radius={24}
+        >
           <IconReportSearch size={34} />
         </ThemeIcon>
         <Text className="loading-kicker">Step 2</Text>

@@ -87,7 +87,7 @@ export function ReviewStep({
           leftSection={<IconRefresh size={17} />}
           className="round-action"
           onClick={onNewReceipt}
-          fw={"bold"}
+          fw={'bold'}
         >
           New
         </Button>
@@ -185,7 +185,9 @@ function ItemList({
               min={0}
               decimalScale={2}
               value={item.totalPrice}
-              onChange={(value) => onUpdateItem(item.id, { totalPrice: toPositiveNumber(value, 0) })}
+              onChange={(value) =>
+                onUpdateItem(item.id, { totalPrice: toPositiveNumber(value, 0) })
+              }
             />
           </SimpleGrid>
           <ActionIcon
@@ -233,7 +235,9 @@ function SavePanel({
       <Stack gap="sm">
         <Stack gap={2}>
           <Text className="step-label">Finish</Text>
-          <Title c={"white"} order={2}>Save your receipt data</Title>
+          <Title c={'white'} order={2}>
+            Save your receipt data
+          </Title>
         </Stack>
 
         <Stack>
@@ -252,16 +256,18 @@ function SavePanel({
           />
         </Stack>
 
-        {!isGoogleConnected && <Button
-          variant="light"
-          color={isGoogleConnected ? 'green' : 'receiptRed'}
-          leftSection={<IconSend size={18} />}
-          className="secondary-button"
-          disabled={!hasGoogleClientId || isGoogleConnected}
-          onClick={onConnectGoogle}
-        >
-          Connect Your Google
-        </Button>}
+        {!isGoogleConnected && (
+          <Button
+            variant="light"
+            color={isGoogleConnected ? 'green' : 'receiptRed'}
+            leftSection={<IconSend size={18} />}
+            className="secondary-button"
+            disabled={!hasGoogleClientId || isGoogleConnected}
+            onClick={onConnectGoogle}
+          >
+            Connect Your Google
+          </Button>
+        )}
         <Button
           loading={isSaving}
           leftSection={<IconSend size={18} />}
