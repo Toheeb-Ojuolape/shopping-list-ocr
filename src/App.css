@@ -50,6 +50,7 @@
   background: var(--brand);
   color: #fff;
   font-weight: 900;
+  padding: 90px 0px 0px 0px;
 }
 
 .status-chip {
@@ -99,12 +100,9 @@
 .mobile-top p,
 .step-label,
 .loading-kicker {
-  margin: 0 0 3px;
   color: var(--brand-dark);
   font-size: 0.72rem;
   font-weight: 900;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .mobile-top h1,
@@ -197,7 +195,6 @@
 
 .shutter-button {
   position: absolute;
-  left: 50%;
   bottom: 18px;
   display: grid;
   place-items: center;
@@ -208,7 +205,7 @@
   border-radius: 999px;
   background: var(--brand);
   color: #fff;
-  transform: translateX(-50%);
+  right: 39%;
 }
 
 .shutter-button:hover {

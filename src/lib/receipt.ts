@@ -1,3 +1,5 @@
+import { inferItemName, inferMerchantName } from './ocrCorrection'
+
 export type CurrencyCode = 'GBP' | 'USD' | 'EUR' | 'UNKNOWN'
 
 export type ReceiptItem = {
@@ -41,11 +43,11 @@ const currencyBySymbol: Record<string, CurrencyCode> = {
   '€': 'EUR',
 }
 
-const totalLabels = /\b(total|amount due|balance due)\b/i
+const totalLabels = /\b(total|grand total|amount due|balance due|to pay)\b/i
 const subtotalLabels = /\b(subtotal|sub total|sub-total)\b/i
 const taxLabels = /\b(tax|vat|gst|hst)\b/i
 const nonItemLabels =
-  /\b(receipt|invoice|cash|card|visa|mastercard|amex|change|payment|auth|terminal|merchant id|thank|served by|operator|balance|refund|approved)\b/i
+  /\b(receipt|invoice|cashier|cash|card|visa|mastercard|amex|change|payment|auth|terminal|merchant id|loyalty|member|points|thank|served by|operator|balance|refund|approved|store copy|customer copy|vat no|tax id|telephone|phone)\b/i
 
 export function parseReceiptText(
   rawText: string,
@@ -54,7 +56,9 @@ export function parseReceiptText(
   const lines = normalizeReceiptText(rawText)
   const warnings: string[] = []
   const defaultCurrency = options.defaultCurrency ?? 'UNKNOWN'
-  const merchant = detectMerchant(lines)
+  const rawMerchant = detectMerchant(lines)
+  const merchantInference = inferMerchantName(rawMerchant)
+  const merchant = merchantInference.value
   const purchasedAt = detectDate(rawText)
   const receiptId = createReceiptId(rawText)
 
@@ -65,7 +69,7 @@ export function parseReceiptText(
 
   const items: ReceiptItem[] = []
 
-  lines.forEach((line) => {
+  buildCandidateLines(lines).forEach((line) => {
     const moneyMatches = extractMoneyMatches(line)
     const detectedCurrency = moneyMatches.find((match) => match.currency)?.currency
     if (detectedCurrency) {
@@ -108,6 +112,10 @@ export function parseReceiptText(
     warnings.push('No confident item rows were found. Edit the rows manually or retry with a flatter photo.')
   }
 
+  if (merchantInference.corrected) {
+    warnings.push(`Inferred store name "${merchantInference.value}" from OCR text "${rawMerchant}".`)
+  }
+
   if (total === undefined && normalizedItems.length > 0) {
     total = roundMoney(sumItems(normalizedItems))
   }
@@ -135,6 +143,7 @@ export function normalizeReceiptText(rawText: string): string[] {
         .replace(/[|]/g, ' ')
         .replace(/\s+/g, ' ')
         .replace(/[“”]/g, '"')
+        .replace(/\s+([A-Z])$/i, ' $1')
         .trim(),
     )
     .filter(Boolean)
@@ -163,39 +172,40 @@ function parseItemLine(
     return undefined
   }
 
-  let name = line.slice(0, totalMatch.index).trim()
-  name = name.replace(/\b\d{8,14}\b/g, '').replace(/\s+/g, ' ').trim()
-  name = name.replace(/\s+[-.:]$/, '').trim()
+  let name = cleanItemName(line.slice(0, totalMatch.index))
 
   if (!name || name.length < 2 || /^[\d\s.,$£€-]+$/.test(name)) {
     return undefined
   }
 
   const quantity = detectQuantity(name)
-  name = name
-    .replace(/^\d+(?:[.,]\d+)?\s*[xX]\s*/, '')
-    .replace(/^\d+(?:[.,]\d+)?\s+@\s*/, '')
-    .replace(/\s+@\s*\d+(?:[.,]\d{2})?$/g, '')
-    .trim()
+  name = stripQuantityAndUnitPrice(name)
 
+  if (!name || name.length < 2 || /^[\d\s.,$£€-]+$/.test(name)) {
+    return undefined
+  }
+
+  const inferredName = inferItemName(name)
+  const finalName = inferredName.corrected ? inferredName.value : toTitleCase(name)
+  const confidence = scoreItemConfidence(name, line, inferredName.score, inferredName.corrected)
   const unitPrice =
     quantity > 1 ? roundMoney(totalMatch.value / quantity) : moneyMatches.length > 1 ? moneyMatches[0].value : undefined
 
   return {
-    id: `${index + 1}-${slugify(name)}`,
-    name: toTitleCase(name),
+    id: `${index + 1}-${slugify(finalName)}`,
+    name: finalName,
     quantity,
     unitPrice,
     totalPrice: totalMatch.value,
     currency,
-    confidence: scoreItemConfidence(name, line),
+    confidence,
     sourceLine: line,
   }
 }
 
 function extractMoneyMatches(line: string): MoneyMatch[] {
   const matches: MoneyMatch[] = []
-  const moneyPattern = /([$£€])?\s*(-?\d{1,5}(?:[.,]\d{2}))(?!\d)/g
+  const moneyPattern = /([$£€])?\s*(-?[0-9OoIl]{1,5}(?:[.,;][0-9OoIl]{2}))(?![0-9OoIl])/g
   let match: RegExpExecArray | null
 
   while ((match = moneyPattern.exec(line)) !== null) {
@@ -214,12 +224,24 @@ function extractMoneyMatches(line: string): MoneyMatch[] {
 }
 
 function parseMoneyValue(token: string): number {
-  return roundMoney(Number(token.replace(',', '.')))
+  const normalized = token
+    .replace(/[Oo]/g, '0')
+    .replace(/[Il]/g, '1')
+    .replace(/;/g, '.')
+    .replace(',', '.')
+
+  return roundMoney(Number(normalized))
 }
 
 function detectMerchant(lines: string[]): string {
   const merchantLine =
-    lines.find((line) => !extractMoneyMatches(line).length && !nonItemLabels.test(line) && line.length > 2) ?? 'Unknown merchant'
+    lines.find(
+      (line) =>
+        !extractMoneyMatches(line).length &&
+        !nonItemLabels.test(line) &&
+        !dateLike(line) &&
+        line.length > 2,
+    ) ?? 'Unknown merchant'
 
   return toTitleCase(merchantLine.slice(0, 42))
 }
@@ -255,6 +277,16 @@ function detectQuantity(name: string): number {
     return Number(atQuantity[1].replace(',', '.'))
   }
 
+  const embeddedQuantity = name.match(/\b(\d+(?:[.,]\d+)?)\s*(?:x|@)\s*[$£€]?\s*\d/i)
+  if (embeddedQuantity) {
+    return Number(embeddedQuantity[1].replace(',', '.'))
+  }
+
+  const qtyLabel = name.match(/\bqty\s*(\d+(?:[.,]\d+)?)/i)
+  if (qtyLabel) {
+    return Number(qtyLabel[1].replace(',', '.'))
+  }
+
   return 1
 }
 
@@ -268,11 +300,17 @@ function createReceiptId(rawText: string): string {
   return `receipt-${Math.abs(hash).toString(36)}`
 }
 
-function scoreItemConfidence(name: string, line: string): number {
+function scoreItemConfidence(
+  name: string,
+  line: string,
+  inferenceScore: number,
+  wasInferred: boolean,
+): number {
   let score = 0.78
   if (name.length > 4) score += 0.08
   if (/[a-z]/i.test(name) && /\d+[.,]\d{2}/.test(line)) score += 0.08
   if (/[^a-z0-9\s&'./-]/i.test(name)) score -= 0.14
+  if (wasInferred) score += Math.max(0.02, (inferenceScore - 0.66) * 0.2)
   return Math.max(0.35, Math.min(0.96, roundMoney(score)))
 }
 
@@ -294,4 +332,59 @@ function padDatePart(value: string): string {
 
 function safeNumber(value: number): number {
   return Number.isFinite(value) ? value : 0
+}
+
+function buildCandidateLines(lines: string[]): string[] {
+  const candidates: string[] = []
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]
+    const nextLine = lines[index + 1]
+
+    if (nextLine && !extractMoneyMatches(line).length && isStandaloneMoneyLine(nextLine)) {
+      candidates.push(`${line} ${nextLine}`)
+      index += 1
+      continue
+    }
+
+    candidates.push(line)
+  }
+
+  return candidates
+}
+
+function isStandaloneMoneyLine(line: string): boolean {
+  const moneyMatches = extractMoneyMatches(line)
+  if (moneyMatches.length !== 1) {
+    return false
+  }
+
+  const withoutAmount = line.replace(moneyMatches[0].token, '').trim()
+  return withoutAmount.length === 0 || /^[A-Z]{1,2}$/i.test(withoutAmount)
+}
+
+function cleanItemName(value: string): string {
+  return value
+    .replace(/\b\d{8,14}\b/g, '')
+    .replace(/^\d{3,7}\s+(?=[A-Z])/i, '')
+    .replace(/\b(?:sku|plu|item)\s*#?\s*\d+\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+[-.:]$/, '')
+    .trim()
+}
+
+function stripQuantityAndUnitPrice(value: string): string {
+  return value
+    .replace(/^\d+(?:[.,]\d+)?\s*[xX]\s*/, '')
+    .replace(/^\d+(?:[.,]\d+)?\s+@\s*/, '')
+    .replace(/\bqty\s*\d+(?:[.,]\d+)?\b/gi, '')
+    .replace(/\s+\d+(?:[.,]\d+)?\s*(?:x|@)\s*[$£€]?\s*[0-9OoIl]+(?:[.,;][0-9OoIl]{2})?$/i, '')
+    .replace(/\s+(?:@|x)\s*[$£€]?\s*[0-9OoIl]+(?:[.,;][0-9OoIl]{2})?$/i, '')
+    .replace(/\s+[$£€]?\s*[0-9OoIl]+(?:[.,;][0-9OoIl]{2})$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function dateLike(value: string): boolean {
+  return /\b(?:20\d{2}|\d{1,2})[-/.]\d{1,2}[-/.](?:20\d{2}|\d{2})\b/.test(value)
 }

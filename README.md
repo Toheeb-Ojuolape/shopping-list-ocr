@@ -17,9 +17,18 @@ Set `VITE_GEMINI_API_KEY` before starting Vite to enable optional cleanup of OCR
 
 ## Google Sheets
 
-The app posts receipt rows to a Google Apps Script web app URL. Create a Google Sheet, open Extensions > Apps Script, add a `doPost` handler that accepts the app payload, deploy it as a Web App, then paste the deployment URL into the app.
+The app writes receipt rows directly to the user's Google Sheet through the Google Sheets API.
 
-The payload includes one row per extracted item and receipt metadata. Captured receipt images are not saved.
+Setup:
+
+1. Create or open a Google Cloud project.
+2. Enable the Google Sheets API.
+3. Configure the OAuth consent screen.
+4. Create an OAuth 2.0 Client ID for a Web application.
+5. Add your local/dev origins, for example `http://localhost:5173` and `http://127.0.0.1:4173`.
+6. Set `VITE_GOOGLE_CLIENT_ID` in `.env`.
+
+Users can then connect Google, paste a normal Google Sheet link, choose a tab name, and save. If the tab does not exist, the app creates it. Captured receipt images are not saved.
 
 ## Tests
 

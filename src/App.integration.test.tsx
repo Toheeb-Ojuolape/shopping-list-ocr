@@ -1,8 +1,12 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MantineProvider } from '@mantine/core'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { ReceiptCamera } from './components/ReceiptCamera'
+import { requestGoogleSheetsAccessToken } from './lib/googleAuth'
 import { appendReceiptToGoogleSheet, downloadReceiptCsv } from './lib/googleSheets'
 import { recognizeReceiptImage } from './lib/ocr'
+import { theme } from './theme'
 
 const receiptOcrText = `
 FRESH MART
@@ -21,7 +25,12 @@ vi.mock('./lib/googleSheets', () => ({
   downloadReceiptCsv: vi.fn(),
 }))
 
+vi.mock('./lib/googleAuth', () => ({
+  requestGoogleSheetsAccessToken: vi.fn(),
+}))
+
 const recognizeReceiptImageMock = vi.mocked(recognizeReceiptImage)
+const requestGoogleSheetsAccessTokenMock = vi.mocked(requestGoogleSheetsAccessToken)
 const appendReceiptToGoogleSheetMock = vi.mocked(appendReceiptToGoogleSheet)
 const downloadReceiptCsvMock = vi.mocked(downloadReceiptCsv)
 
@@ -30,6 +39,7 @@ describe('App integration', () => {
     localStorage.clear()
     vi.clearAllMocks()
     recognizeReceiptImageMock.mockResolvedValue({ text: receiptOcrText, confidence: 98 })
+    requestGoogleSheetsAccessTokenMock.mockResolvedValue('test-access-token')
     appendReceiptToGoogleSheetMock.mockResolvedValue(undefined)
     mockCamera()
   })
@@ -50,7 +60,7 @@ describe('App integration', () => {
     fireEvent.change(within(firstRow).getByLabelText('Price'), { target: { value: '1.50' } })
 
     fireEvent.change(screen.getByLabelText('Google Sheet link'), {
-      target: { value: 'https://script.google.com/macros/s/test/exec' },
+      target: { value: 'https://docs.google.com/spreadsheets/d/test-sheet-id/edit' },
     })
     fireEvent.change(screen.getByLabelText('Sheet tab'), { target: { value: 'June Receipts' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save to Google Sheet' }))
@@ -58,8 +68,9 @@ describe('App integration', () => {
     await waitFor(() => expect(appendReceiptToGoogleSheetMock).toHaveBeenCalledTimes(1))
     expect(appendReceiptToGoogleSheetMock).toHaveBeenCalledWith(
       {
-        endpointUrl: 'https://script.google.com/macros/s/test/exec',
+        sheetUrl: 'https://docs.google.com/spreadsheets/d/test-sheet-id/edit',
         sheetName: 'June Receipts',
+        accessToken: 'test-access-token',
       },
       expect.objectContaining({
         merchant: 'Fresh Mart',
@@ -87,6 +98,40 @@ describe('App integration', () => {
     await waitFor(() =>
       expect(screen.getByTestId('receipt-status')).toHaveTextContent('Add your Google Sheet link before saving.'),
     )
+  })
+
+  it('only enables the snap button when the camera can provide a frame', async () => {
+    const onCapture = vi.fn()
+    const getContextSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue(
+      'data:image/jpeg;base64,capture',
+    )
+
+    const { container } = render(
+      <MantineProvider theme={theme}>
+        <ReceiptCamera onCapture={onCapture} onError={vi.fn()} />
+      </MantineProvider>,
+    )
+
+    const snapButton = screen.getByRole('button', { name: 'Capture receipt' })
+    expect(snapButton).toBeDisabled()
+
+    const video = container.querySelector('video') as HTMLVideoElement
+    Object.defineProperties(video, {
+      readyState: { configurable: true, value: 2 },
+      videoHeight: { configurable: true, value: 480 },
+      videoWidth: { configurable: true, value: 640 },
+    })
+
+    fireEvent.canPlay(video)
+    expect(snapButton).toBeEnabled()
+
+    fireEvent.click(snapButton)
+
+    expect(getContextSpy).toHaveBeenCalledWith('2d')
+    expect(onCapture).toHaveBeenCalledWith('data:image/jpeg;base64,capture')
   })
 })
 

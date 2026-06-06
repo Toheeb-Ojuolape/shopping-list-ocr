@@ -1,15 +1,11 @@
 import { Badge, Box, Button, Group, Paper, Text } from "@mantine/core";
-import {
-  IconCancel,
-  IconCheck,
-  IconReceipt2,
-  IconRefresh,
-} from "@tabler/icons-react";
-import { useCallback, useMemo, useState } from "react";
+import { IconReceipt, IconRefresh } from "@tabler/icons-react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { CaptureStep } from "./components/CaptureStep";
 import { LoadingStep } from "./components/LoadingStep";
 import { ReviewStep } from "./components/ReviewStep";
 import { refineReceiptWithGemini } from "./lib/gemini";
+import { requestGoogleSheetsAccessToken } from "./lib/googleAuth";
 import {
   appendReceiptToGoogleSheet,
   downloadReceiptCsv,
@@ -19,9 +15,12 @@ import type { ReceiptExtraction, ReceiptItem } from "./lib/receipt";
 import { parseReceiptText, sumItems } from "./lib/receipt";
 import {
   getEnvGeminiKey,
+  getEnvGoogleClientId,
   getSavedSheetSettings,
+  getErrorMessage,
   saveSheetSettings,
   toReadableStatus,
+  withToast,
 } from "./lib/utils";
 
 type AppStep = "capture" | "review";
@@ -34,6 +33,7 @@ type WorkStatus =
   | "error";
 
 const envGeminiKey = getEnvGeminiKey();
+const envGoogleClientId = getEnvGoogleClientId();
 const savedSheetSettings = getSavedSheetSettings();
 
 export function AppComponent() {
@@ -42,10 +42,10 @@ export function AppComponent() {
   const [statusText, setStatusText] = useState("Ready when you are");
   const [progress, setProgress] = useState(0);
   const [extraction, setExtraction] = useState<ReceiptExtraction | undefined>();
-  const [sheetEndpoint, setSheetEndpoint] = useState(
-    savedSheetSettings.endpointUrl
-  );
+  const activeReceiptIdRef = useRef<string | undefined>(undefined);
+  const [sheetUrl, setSheetUrl] = useState(savedSheetSettings.sheetUrl);
   const [sheetName, setSheetName] = useState(savedSheetSettings.sheetName);
+  const [googleAccessToken, setGoogleAccessToken] = useState("");
 
   const lineTotal = useMemo(
     () => sumItems(extraction?.items ?? []),
@@ -53,6 +53,48 @@ export function AppComponent() {
   );
   const isExtracting = status === "recognizing" || status === "refining";
   const isSaving = status === "saving";
+  const isGoogleConnected = Boolean(googleAccessToken);
+
+  function maybeRefineWeakExtraction(
+    rawText: string,
+    fallback: ReceiptExtraction
+  ) {
+    if (!envGeminiKey.trim() || !shouldRefineWithGemini(fallback)) {
+      return;
+    }
+
+    void refineReceiptWithGemini(envGeminiKey, rawText, fallback)
+      .then((refined) => {
+        if (
+          activeReceiptIdRef.current !== fallback.receiptId ||
+          refined.items.length < fallback.items.length
+        ) {
+          return;
+        }
+
+        let appliedStatus: string | undefined;
+        setExtraction((current) => {
+          if (
+            !current ||
+            current.receiptId !== fallback.receiptId ||
+            current.items.length !== fallback.items.length
+          ) {
+            return current;
+          }
+
+          appliedStatus = getReadyStatusText(refined);
+          return refined;
+        });
+
+        if (appliedStatus) {
+          setStatus("ready");
+          setStatusText(appliedStatus);
+        }
+      })
+      .catch(() => {
+        // Keep the local OCR result visible; Gemini is only a best-effort fallback.
+      });
+  }
 
   const extractReceipt = useCallback(async (imageDataUri: string) => {
     setStep("review");
@@ -62,34 +104,40 @@ export function AppComponent() {
     setProgress(8);
 
     try {
-      const ocr = await recognizeReceiptImage(imageDataUri, (nextProgress) => {
-        setProgress(nextProgress.progress);
-        setStatusText(toReadableStatus(nextProgress.status));
-      });
+      const { ocrText, parsed } = await withToast(
+        async () => {
+          const ocr = await recognizeReceiptImage(imageDataUri, (nextProgress) => {
+            setProgress(nextProgress.progress);
+            setStatusText(toReadableStatus(nextProgress.status));
+          });
 
-      let parsed = parseReceiptText(ocr.text, { defaultCurrency: "GBP" });
+          return {
+            ocrText: ocr.text,
+            parsed: parseReceiptText(ocr.text, { defaultCurrency: "GBP" }),
+          };
+        },
+        {
+          loading: "Reading your receipt",
+          success: ({ parsed }) => getReadyStatusText(parsed),
+        }
+      );
+      activeReceiptIdRef.current = parsed.receiptId;
 
-      if (envGeminiKey.trim()) {
-        setStatus("refining");
-        setStatusText("Tidying up the list");
-        parsed = await refineReceiptWithGemini(envGeminiKey, ocr.text, parsed);
-      }
-
-      setExtraction(parsed);
       setStatus("ready");
-      setStatusText(`${parsed.items.length} rows ready`);
+      setStatusText(getReadyStatusText(parsed));
+      setExtraction(parsed);
       setProgress(100);
+
+      maybeRefineWeakExtraction(ocrText, parsed);
     } catch (error) {
       setStatus("error");
-      setStatusText(
-        error instanceof Error ? error.message : "Receipt extraction failed"
-      );
+      setStatusText(getErrorMessage(error));
     }
   }, []);
 
   const handleCameraError = useCallback((error: Error) => {
     setStatus("error");
-    setStatusText(error.message);
+    setStatusText(getErrorMessage(error));
   }, []);
 
   function handleUpload(file: File | null) {
@@ -109,19 +157,52 @@ export function AppComponent() {
     setStatusText("Saving to Google Sheet");
 
     try {
-      await appendReceiptToGoogleSheet(
-        {
-          endpointUrl: sheetEndpoint,
-          sheetName,
+      await withToast(
+        async () => {
+          const accessToken = googleAccessToken || (await connectGoogle());
+          await appendReceiptToGoogleSheet(
+            {
+              sheetUrl,
+              sheetName,
+              accessToken,
+            },
+            extraction
+          );
+          saveSheetSettings({ sheetUrl, sheetName });
         },
-        extraction
+        {
+          loading: "Saving to Google Sheet",
+          success: "Saved to Google Sheet",
+        }
       );
-      saveSheetSettings({ endpointUrl: sheetEndpoint, sheetName });
       setStatus("ready");
       setStatusText("Saved to Google Sheet");
     } catch (error) {
       setStatus("error");
-      setStatusText(error instanceof Error ? error.message : "Save failed");
+      setStatusText(getErrorMessage(error));
+    }
+  }
+
+  async function connectGoogle() {
+    const accessToken = await requestGoogleSheetsAccessToken(envGoogleClientId);
+    setGoogleAccessToken(accessToken);
+    return accessToken;
+  }
+
+  async function handleConnectGoogle() {
+    setStatus("saving");
+    setStatusText("Connecting to Google");
+
+    try {
+      await withToast(connectGoogle, {
+        loading: "Connecting to Google",
+        success: "Google connected",
+      });
+      setStatus("ready");
+      setStatusText("Google connected");
+    } catch (error) {
+      setStatus("error");
+      setStatusText(getErrorMessage(error));
     }
   }
 
@@ -170,6 +251,7 @@ export function AppComponent() {
   function startNewReceipt() {
     setStep("capture");
     setExtraction(undefined);
+    activeReceiptIdRef.current = undefined;
     setProgress(0);
     setStatus("idle");
     setStatusText("Ready when you are");
@@ -191,7 +273,7 @@ export function AppComponent() {
             color="receiptRed"
             aria-label="Receipt app"
           >
-            <IconReceipt2 size={20} stroke={2.2} />
+            <IconReceipt size={16} />
           </Badge>
           <Badge
             className={`status-chip ${status}`}
@@ -206,11 +288,6 @@ export function AppComponent() {
             variant="light"
             fw={"bold"}
           >
-            {status === "error" ? (
-              <IconCancel color={"red"} size={13} />
-            ) : (
-              <IconCheck color={"green"} size={13} />
-            )}{" "}
             {statusText}
           </Badge>
         </Group>
@@ -234,15 +311,18 @@ export function AppComponent() {
             lineTotal={lineTotal}
             statusText={statusText}
             isSaving={isSaving}
-            sheetEndpoint={sheetEndpoint}
+            sheetUrl={sheetUrl}
             sheetName={sheetName}
+            isGoogleConnected={isGoogleConnected}
+            hasGoogleClientId={Boolean(envGoogleClientId.trim())}
             onNewReceipt={startNewReceipt}
             onUpdateReceipt={updateReceipt}
             onUpdateItem={updateItem}
             onAddItem={addItem}
             onRemoveItem={removeItem}
-            onSheetEndpointChange={setSheetEndpoint}
+            onSheetUrlChange={setSheetUrl}
             onSheetNameChange={setSheetName}
+            onConnectGoogle={() => void handleConnectGoogle()}
             onSaveToSheet={() => void handleSaveToSheet()}
             onDownloadCsv={() => downloadReceiptCsv(extraction)}
           />
@@ -269,4 +349,24 @@ export function AppComponent() {
       </Paper>
     </Box>
   );
+}
+
+function getReadyStatusText(extraction: ReceiptExtraction): string {
+  if (extraction.items.length === 0) {
+    return "No rows found";
+  }
+
+  return `${extraction.items.length} rows ready`;
+}
+
+function shouldRefineWithGemini(extraction: ReceiptExtraction): boolean {
+  if (extraction.items.length === 0) {
+    return true;
+  }
+
+  const averageConfidence =
+    extraction.items.reduce((total, item) => total + item.confidence, 0) /
+    extraction.items.length;
+
+  return averageConfidence < 0.72;
 }

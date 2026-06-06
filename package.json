@@ -21,6 +21,7 @@
     "@mantine/hooks": "^9.3.0",
     "@tabler/icons-react": "^3.44.0",
     "@tanstack/react-query": "^5.101.0",
+    "fuzzball": "^2.2.6",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-hot-toast": "^2.6.0",
