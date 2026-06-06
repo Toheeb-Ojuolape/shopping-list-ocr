@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mergeGeminiPayload } from './gemini'
-import { buildSheetRows, createExcelHtml } from './googleSheets'
+import { buildSheetRows, createReceiptCsv } from './googleSheets'
 import { parseReceiptText, sumItems } from './receipt'
 
 describe('receipt parsing', () => {
@@ -75,12 +75,12 @@ describe('Gemini merge normalization', () => {
   })
 })
 
-describe('sheet and Excel exports', () => {
+describe('sheet and CSV exports', () => {
   it('builds one Google Sheet row per receipt item', () => {
     const extraction = parseReceiptText('Grocer\nTea £3.25\nCake £2.75\nTotal £6.00', {
       defaultCurrency: 'GBP',
     })
-    const rows = buildSheetRows(extraction, 'data:image/jpeg;base64,abc', '2026-06-06T10:00:00.000Z')
+    const rows = buildSheetRows(extraction, '2026-06-06T10:00:00.000Z')
 
     expect(rows).toHaveLength(2)
     expect(rows[0]).toMatchObject({
@@ -89,18 +89,17 @@ describe('sheet and Excel exports', () => {
       itemName: 'Tea',
       totalPrice: 3.25,
       receiptTotal: 6,
-      imageDataUrl: 'data:image/jpeg;base64,abc',
     })
   })
 
-  it('escapes cell content in the Excel-compatible workbook', () => {
+  it('escapes cell content in the CSV export', () => {
     const extraction = parseReceiptText('Shop\nMilk <large> £1.95\nTotal £1.95', {
       defaultCurrency: 'GBP',
     })
-    const html = createExcelHtml({ ...extraction, merchant: 'A&B "Shop"' }, 'data:image/jpeg;base64,abc')
+    const csv = createReceiptCsv({ ...extraction, merchant: 'A&B "Shop"' })
 
-    expect(html).toContain('A&amp;B &quot;Shop&quot;')
-    expect(html).toContain('Milk &lt;Large&gt;')
-    expect(html).toContain('<img src="data:image/jpeg;base64,abc"')
+    expect(csv).toContain('"A&B ""Shop"""')
+    expect(csv).toContain('Milk <Large>')
+    expect(csv).not.toContain('data:image')
   })
 })

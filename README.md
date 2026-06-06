@@ -1,6 +1,6 @@
 # Shopping List OCR
 
-A mobile-first receipt capture app that extracts item names and prices with OCR, optionally refines the result with Gemini, and saves rows to Google Sheets or an Excel-compatible workbook.
+A mobile-first receipt capture app that extracts item names and prices with OCR, optionally refines the result with Gemini, and saves extracted rows to Google Sheets or a CSV file.
 
 ## Run
 
@@ -13,13 +13,13 @@ Camera access requires `localhost` or HTTPS.
 
 ## Gemini
 
-Add a Gemini API key in the app, or set `VITE_GEMINI_API_KEY` before starting Vite. Client-side API keys are convenient for local use; move this behind a backend before production use.
+Set `VITE_GEMINI_API_KEY` before starting Vite to enable optional cleanup of OCR results. Client-side API keys are convenient for local use; move this behind a backend before production use.
 
 ## Google Sheets
 
-The app posts receipt rows to a Google Apps Script web app URL. Create a Google Sheet, open Extensions > Apps Script, paste the script from the app's "Apps Script" panel, deploy it as a Web App, then paste the deployment URL into the app.
+The app posts receipt rows to a Google Apps Script web app URL. Create a Google Sheet, open Extensions > Apps Script, add a `doPost` handler that accepts the app payload, deploy it as a Web App, then paste the deployment URL into the app.
 
-The payload includes one row per extracted item, receipt metadata, raw OCR text, and the captured image data URL.
+The payload includes one row per extracted item and receipt metadata. Captured receipt images are not saved.
 
 ## Tests
 
