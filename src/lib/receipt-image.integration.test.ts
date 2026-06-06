@@ -9,8 +9,8 @@ import { describe, expect, it } from 'vitest'
 import { parseReceiptText, sumItems } from './receipt'
 
 describe('real receipt image OCR integration', () => {
-  it('extracts the Aldi sample receipt from the actual image fixture', async () => {
-    const ocrText = await recognizeSampleReceiptFixture()
+  it('parses the canonical Aldi receipt OCR fixture', async () => {
+    const ocrText = await readSampleReceiptOcrText()
     const extraction = parseReceiptText(ocrText, {
       defaultCurrency: 'GBP',
       defaultPurchasedAt: '2026-06-06',
@@ -27,6 +27,25 @@ describe('real receipt image OCR integration', () => {
     expect(sumItems(extraction.items)).toBe(29.47)
     expect(extraction.items.reduce((total, item) => total + item.quantity, 0)).toBe(24)
     expect(extractedNames).toEqual(expectedItemNames)
+    expect(extraction.items.some((item) => /total/i.test(item.name))).toBe(false)
+  })
+
+  it('recognizes useful receipt text from the actual image fixture', async () => {
+    const ocrText = await recognizeSampleReceiptFixture()
+    const extraction = parseReceiptText(ocrText, {
+      defaultCurrency: 'GBP',
+      defaultPurchasedAt: '2026-06-06',
+    })
+    const expectedRows = await readExpectedSampleRows()
+    const expectedItemNames = new Set(expectedRows.map((row) => row.item.toUpperCase()))
+    const matchedExpectedItems = extraction.items.filter((item) =>
+      expectedItemNames.has(item.name.toUpperCase()),
+    )
+
+    expect(ocrText.length).toBeGreaterThan(500)
+    expect(extraction.merchant).toBe('ALDI STORES')
+    expect(extraction.items.length).toBeGreaterThanOrEqual(12)
+    expect(matchedExpectedItems.length).toBeGreaterThanOrEqual(8)
     expect(extraction.items.some((item) => /total/i.test(item.name))).toBe(false)
   }, 90_000)
 })
@@ -129,4 +148,8 @@ async function readExpectedSampleRows(): Promise<Array<{ item: string }>> {
     const [, , , item] = row.split(',')
     return { item }
   })
+}
+
+async function readSampleReceiptOcrText(): Promise<string> {
+  return fs.readFile(path.join(process.cwd(), 'src/test/sample-receipt-ocr.txt'), 'utf8')
 }

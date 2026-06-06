@@ -548,6 +548,7 @@ function normalizeItemDisplayName(value: string): string {
       .replace(/\bE\/F\s+ONIONS\b/gi, 'E/E Onions')
       .replace(/\s+\/ile\b/gi, '')
       .replace(/\bCROISSANTS\s+L\/L\s+BK\b/gi, 'Croissant L/L 8PK')
+      .replace(/\bCROISSANTS\s+L\/L\s+8PK\b/gi, 'Croissant L/L 8PK')
       .replace(/\bCROISSANTS\s+E\/LTBPK\b/gi, 'Croissant L/L 8PK')
       .replace(/\bAGTIE\b/gi, 'Toastie')
       .replace(/\bWASHING UP LIQUID\b/gi, 'Washing Liquid')
