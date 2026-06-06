@@ -26,10 +26,10 @@ test('extracts a receipt, edits rows, saves to Google Sheets, and exports Excel'
 
   await page.getByRole('button', { name: 'Extract' }).click()
   await expect(page.getByTestId('receipt-status')).toContainText('2 rows ready')
-  await expect(page.getByDisplayValue('E2E Market')).toBeVisible()
-  await expect(page.getByDisplayValue('Apples')).toBeVisible()
-  await expect(page.getByDisplayValue('Oat Milk')).toBeVisible()
-  await expect(page.getByText('£5.50')).toBeVisible()
+  await expect(page.getByLabel('Merchant')).toHaveValue('E2e Market')
+  await expect(page.getByTestId('item-row').first().getByLabel('Item')).toHaveValue('Apples')
+  await expect(page.getByTestId('item-row').nth(1).getByLabel('Item')).toHaveValue('Oat Milk')
+  await expect(page.getByText('£5.50').first()).toBeVisible()
 
   const firstRow = page.getByTestId('item-row').first()
   await firstRow.getByLabel('Item').fill('Pink Lady Apples')
@@ -45,7 +45,7 @@ test('extracts a receipt, edits rows, saves to Google Sheets, and exports Excel'
     sheetName: 'E2E Receipts',
     rows: [
       expect.objectContaining({
-        merchant: 'E2E Market',
+        merchant: 'E2e Market',
         itemName: 'Pink Lady Apples',
         totalPrice: 2.55,
       }),

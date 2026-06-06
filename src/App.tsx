@@ -14,7 +14,10 @@ type WorkStatus = 'idle' | 'recognizing' | 'refining' | 'ready' | 'saving' | 'er
 
 const savedEndpoint = localStorage.getItem('receipt-sheet-endpoint') ?? ''
 const savedSheetName = localStorage.getItem('receipt-sheet-name') ?? 'Receipts'
-const envGeminiKey = import.meta.env.MODE === 'test' ? '' : (import.meta.env.VITE_GEMINI_API_KEY ?? '')
+const envGeminiKey =
+  import.meta.env.MODE === 'test' || import.meta.env.VITE_TEST_OCR_TEXT
+    ? ''
+    : (import.meta.env.VITE_GEMINI_API_KEY ?? '')
 
 function App() {
   const [imageDataUri, setImageDataUri] = useState('')
@@ -434,7 +437,9 @@ function ReceiptCamera({
           setIsReady(true)
         }
       } catch (error) {
-        onError(error instanceof Error ? error : new Error('Camera unavailable.'))
+        if (isMounted) {
+          onError(error instanceof Error ? error : new Error('Camera unavailable.'))
+        }
       }
     }
 

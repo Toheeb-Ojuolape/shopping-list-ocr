@@ -19,7 +19,7 @@ export async function recognizeReceiptImage(
   if (fixtureText) {
     onProgress?.({ status: 'fixture ocr', progress: 100 })
     return {
-      text: fixtureText,
+      text: fixtureText.replace(/\\n/g, '\n'),
       confidence: 99,
     }
   }

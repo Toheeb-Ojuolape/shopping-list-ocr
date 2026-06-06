@@ -25,4 +25,8 @@ The payload includes one row per extracted item, receipt metadata, raw OCR text,
 
 ```bash
 npm test
+npm run test:unit
+npm run test:integration
+npm run test:e2e
+npm run check
 ```
