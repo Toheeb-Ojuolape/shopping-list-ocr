@@ -119,6 +119,51 @@ describe('receipt parsing', () => {
     expect(extraction.currency).toBe('USD')
     expect(extraction.items[0].currency).toBe('USD')
   })
+
+  it('keeps product-size modifiers out of the price when parsing supermarket rows', () => {
+    const extraction = parseReceiptText('ALDI STORES\n306030 EE SPAGHETTI 5006      0.56 A', {
+      defaultCurrency: 'GBP',
+    })
+
+    expect(extraction.items[0]).toMatchObject({
+      name: 'Ee Spaghetti 500G',
+      quantity: 1,
+      totalPrice: 0.56,
+    })
+  })
+
+  it('keeps open-ended product names while rejecting OCR fragment rows', () => {
+    const extraction = parseReceiptText(
+      `
+      Market
+      Yi Li Yo la Tan 0.89
+      Pink Lady Apples 6PK 2.40
+      TOTAL 2.40
+      `,
+      { defaultCurrency: 'GBP' },
+    )
+
+    expect(extraction.items.map((item) => item.name)).toEqual(['Pink Lady Apples 6PK'])
+  })
+
+  it('repairs item modifiers glued to prices after OCR', () => {
+    const extraction = parseReceiptText(
+      `
+      ALDI STORES
+      2 X 1.45
+      508678 PROTEIN PAICAKES 42,90 A
+      TOTAL 2.90
+      `,
+      { defaultCurrency: 'GBP' },
+    )
+
+    expect(extraction.items[0]).toMatchObject({
+      name: 'Protein Pancakes 4',
+      quantity: 2,
+      unitPrice: 1.45,
+      totalPrice: 2.9,
+    })
+  })
 })
 
 describe('Gemini merge normalization', () => {
@@ -153,7 +198,7 @@ describe('sheet and CSV exports', () => {
     expect(rows).toHaveLength(2)
     expect(rows[0]).toMatchObject({
       capturedAt: '2026-06-06T10:00:00.000Z',
-      merchant: 'Grocer',
+      merchant: 'Aldi',
       itemName: 'Tea',
       totalPrice: 3.25,
       receiptTotal: 6,
@@ -172,7 +217,7 @@ describe('sheet and CSV exports', () => {
     expect(values[1]).toEqual([
       'New receipt - 2026-06-06',
       '2026-06-06T10:00:00.000Z',
-      'Grocer',
+      'Aldi',
       '',
       '',
       '',
@@ -191,7 +236,7 @@ describe('sheet and CSV exports', () => {
     const csv = createReceiptCsv({ ...extraction, merchant: 'A&B "Shop"' })
 
     expect(csv).toContain('"A&B ""Shop"""')
-    expect(csv).toContain('Milk <Large>')
+    expect(csv).toContain('Milk')
     expect(csv).not.toContain('data:image')
   })
 

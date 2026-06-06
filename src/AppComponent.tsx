@@ -6,9 +6,9 @@ import { LoadingStep } from './components/LoadingStep'
 import { ReviewStep } from './components/ReviewStep'
 import { getCurrencyFromBrowserLocale, resolveLocalCurrency } from './lib/currency'
 import { refineReceiptWithGemini } from './lib/gemini'
-import { requestGoogleSheetsAccessToken } from './lib/googleAuth'
+import { getCachedGoogleSheetsAccessToken, requestGoogleSheetsAccessToken } from './lib/googleAuth'
 import { appendReceiptToGoogleSheet, downloadReceiptCsv } from './lib/googleSheets'
-import { inferMerchantName } from './lib/ocrCorrection'
+import { normalizeMerchantName } from './lib/ocrCorrection'
 import { recognizeReceiptImage } from './lib/ocr'
 import type { ReceiptExtraction, ReceiptItem } from './lib/receipt'
 import { parseReceiptText, sumItems } from './lib/receipt'
@@ -39,7 +39,7 @@ export function AppComponent() {
   const activeReceiptIdRef = useRef<string | undefined>(undefined)
   const [sheetUrl, setSheetUrl] = useState(savedSheetSettings.sheetUrl)
   const [sheetName, setSheetName] = useState(savedSheetSettings.sheetName)
-  const [googleAccessToken, setGoogleAccessToken] = useState('')
+  const [googleAccessToken, setGoogleAccessToken] = useState(getCachedGoogleSheetsAccessToken())
   const [localCurrency, setLocalCurrency] = useState(getCurrencyFromBrowserLocale())
 
   const lineTotal = useMemo(() => sumItems(extraction?.items ?? []), [extraction])
@@ -168,7 +168,7 @@ export function AppComponent() {
     try {
       await withToast(
         async () => {
-          const inferredMerchant = inferMerchantName(extraction.merchant)
+          const inferredMerchant = normalizeMerchantName(extraction.merchant)
           const extractionForSave = {
             ...extraction,
             merchant: inferredMerchant.value,
@@ -182,7 +182,10 @@ export function AppComponent() {
             setExtraction(extractionForSave)
           }
 
-          const accessToken = googleAccessToken || (await connectGoogle())
+          const accessToken =
+            googleAccessToken ||
+            (await requestGoogleSheetsAccessToken(envGoogleClientId, { prompt: '' }))
+          setGoogleAccessToken(accessToken)
           await appendReceiptToGoogleSheet(
             {
               sheetUrl,
@@ -207,7 +210,9 @@ export function AppComponent() {
   }
 
   async function connectGoogle() {
-    const accessToken = await requestGoogleSheetsAccessToken(envGoogleClientId)
+    const accessToken = await requestGoogleSheetsAccessToken(envGoogleClientId, {
+      prompt: 'consent',
+    })
     setGoogleAccessToken(accessToken)
     return accessToken
   }

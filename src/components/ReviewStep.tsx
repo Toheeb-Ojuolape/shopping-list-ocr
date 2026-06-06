@@ -19,7 +19,7 @@ import {
   IconSend,
   IconTrash,
 } from '@tabler/icons-react'
-import { inferMerchantName } from '../lib/ocrCorrection'
+import { normalizeMerchantName } from '../lib/ocrCorrection'
 import type { ReceiptExtraction, ReceiptItem } from '../lib/receipt'
 import { merchantLexicon } from '../lib/receiptLexicon'
 import { formatMoney, today, toPositiveNumber } from '../lib/utils'
@@ -120,7 +120,7 @@ export function ReviewStep({
           value={extraction.merchant}
           onChange={(value) => onUpdateReceipt({ merchant: value })}
           onBlur={() => {
-            const inferred = inferMerchantName(extraction.merchant)
+            const inferred = normalizeMerchantName(extraction.merchant)
             onUpdateReceipt({ merchant: inferred.value })
           }}
         />

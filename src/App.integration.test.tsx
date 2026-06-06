@@ -26,6 +26,7 @@ vi.mock('./lib/googleSheets', () => ({
 }))
 
 vi.mock('./lib/googleAuth', () => ({
+  getCachedGoogleSheetsAccessToken: vi.fn(() => ''),
   requestGoogleSheetsAccessToken: vi.fn(),
 }))
 
