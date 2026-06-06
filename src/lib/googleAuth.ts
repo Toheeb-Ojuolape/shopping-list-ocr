@@ -90,9 +90,13 @@ function loadGoogleIdentity(): Promise<void> {
 
     if (existingScript) {
       existingScript.addEventListener('load', () => resolve(), { once: true })
-      existingScript.addEventListener('error', () => reject(new Error('Google sign-in failed to load.')), {
-        once: true,
-      })
+      existingScript.addEventListener(
+        'error',
+        () => reject(new Error('Google sign-in failed to load.')),
+        {
+          once: true,
+        },
+      )
       return
     }
 

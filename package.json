@@ -7,13 +7,15 @@
     "dev": "vite",
     "dev:e2e": "vite --mode e2e --host 127.0.0.1 --port 4173",
     "build": "tsc -b && vite build",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "npm run test:unit && npm run test:integration",
     "test:unit": "vitest run --config vitest.unit.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:e2e": "playwright test",
-    "check": "npm run lint && npm run test:unit && npm run test:integration && npm run test:e2e && npm run build"
+    "check": "npm run format:check && npm run lint && npm run test:unit && npm run test:integration && npm run test:e2e && npm run build"
   },
   "dependencies": {
     "@google/genai": "^2.8.0",
@@ -42,6 +44,7 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
     "jsdom": "^29.1.1",
+    "prettier": "^3.8.3",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
     "vite": "^8.0.12",

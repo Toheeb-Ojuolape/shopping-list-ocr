@@ -67,7 +67,12 @@ export function inferItemName(value: string): CorrectionResult {
     return { value, corrected: false, score: 0 }
   }
 
-  const phraseMatch = inferFromLexicon(cleaned, groceryItemLexicon, itemPhraseOptions, token_set_ratio)
+  const phraseMatch = inferFromLexicon(
+    cleaned,
+    groceryItemLexicon,
+    itemPhraseOptions,
+    token_set_ratio,
+  )
   if (
     (phraseMatch.corrected && shouldUsePhraseMatch(cleaned, phraseMatch.value)) ||
     exactLexiconMatch(cleaned, groceryItemLexicon)

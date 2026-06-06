@@ -39,7 +39,7 @@ type MoneyMatch = {
 
 const currencyBySymbol: Record<string, CurrencyCode> = {
   '£': 'GBP',
-  '$': 'USD',
+  $: 'USD',
   '€': 'EUR',
 }
 
@@ -109,11 +109,15 @@ export function parseReceiptText(
   }))
 
   if (normalizedItems.length === 0 && rawText.trim()) {
-    warnings.push('No confident item rows were found. Edit the rows manually or retry with a flatter photo.')
+    warnings.push(
+      'No confident item rows were found. Edit the rows manually or retry with a flatter photo.',
+    )
   }
 
   if (merchantInference.corrected) {
-    warnings.push(`Inferred store name "${merchantInference.value}" from OCR text "${rawMerchant}".`)
+    warnings.push(
+      `Inferred store name "${merchantInference.value}" from OCR text "${rawMerchant}".`,
+    )
   }
 
   if (total === undefined && normalizedItems.length > 0) {
@@ -189,7 +193,11 @@ function parseItemLine(
   const finalName = inferredName.corrected ? inferredName.value : toTitleCase(name)
   const confidence = scoreItemConfidence(name, line, inferredName.score, inferredName.corrected)
   const unitPrice =
-    quantity > 1 ? roundMoney(totalMatch.value / quantity) : moneyMatches.length > 1 ? moneyMatches[0].value : undefined
+    quantity > 1
+      ? roundMoney(totalMatch.value / quantity)
+      : moneyMatches.length > 1
+        ? moneyMatches[0].value
+        : undefined
 
   return {
     id: `${index + 1}-${slugify(finalName)}`,
@@ -323,7 +331,12 @@ function toTitleCase(value: string): string {
 }
 
 function slugify(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'item'
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '') || 'item'
+  )
 }
 
 function padDatePart(value: string): string {

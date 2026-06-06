@@ -94,7 +94,14 @@ export function ReceiptCamera({ onCapture, onError }: ReceiptCameraProps) {
 
   return (
     <div className="live-camera">
-      <video ref={videoRef} autoPlay muted playsInline onLoadedMetadata={markCameraReady} onCanPlay={markCameraReady} />
+      <video
+        ref={videoRef}
+        autoPlay
+        muted
+        playsInline
+        onLoadedMetadata={markCameraReady}
+        onCanPlay={markCameraReady}
+      />
       <ActionIcon
         type="button"
         className="shutter-button"

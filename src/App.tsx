@@ -3,7 +3,7 @@ import { MantineProvider } from '@mantine/core'
 import './App.css'
 import { AppComponent } from './AppComponent'
 import { theme } from './theme'
-import { Toaster } from 'react-hot-toast';
+import { Toaster } from 'react-hot-toast'
 
 function App() {
   return (

@@ -1,18 +1,15 @@
-import { Badge, Box, Button, Group, Paper, Text } from "@mantine/core";
-import { IconReceipt, IconRefresh } from "@tabler/icons-react";
-import { useCallback, useMemo, useRef, useState } from "react";
-import { CaptureStep } from "./components/CaptureStep";
-import { LoadingStep } from "./components/LoadingStep";
-import { ReviewStep } from "./components/ReviewStep";
-import { refineReceiptWithGemini } from "./lib/gemini";
-import { requestGoogleSheetsAccessToken } from "./lib/googleAuth";
-import {
-  appendReceiptToGoogleSheet,
-  downloadReceiptCsv,
-} from "./lib/googleSheets";
-import { recognizeReceiptImage } from "./lib/ocr";
-import type { ReceiptExtraction, ReceiptItem } from "./lib/receipt";
-import { parseReceiptText, sumItems } from "./lib/receipt";
+import { Badge, Box, Button, Group, Paper, Text } from '@mantine/core'
+import { IconReceipt, IconRefresh } from '@tabler/icons-react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { CaptureStep } from './components/CaptureStep'
+import { LoadingStep } from './components/LoadingStep'
+import { ReviewStep } from './components/ReviewStep'
+import { refineReceiptWithGemini } from './lib/gemini'
+import { requestGoogleSheetsAccessToken } from './lib/googleAuth'
+import { appendReceiptToGoogleSheet, downloadReceiptCsv } from './lib/googleSheets'
+import { recognizeReceiptImage } from './lib/ocr'
+import type { ReceiptExtraction, ReceiptItem } from './lib/receipt'
+import { parseReceiptText, sumItems } from './lib/receipt'
 import {
   getEnvGeminiKey,
   getEnvGoogleClientId,
@@ -21,46 +18,34 @@ import {
   saveSheetSettings,
   toReadableStatus,
   withToast,
-} from "./lib/utils";
+} from './lib/utils'
 
-type AppStep = "capture" | "review";
-type WorkStatus =
-  | "idle"
-  | "recognizing"
-  | "refining"
-  | "ready"
-  | "saving"
-  | "error";
+type AppStep = 'capture' | 'review'
+type WorkStatus = 'idle' | 'recognizing' | 'refining' | 'ready' | 'saving' | 'error'
 
-const envGeminiKey = getEnvGeminiKey();
-const envGoogleClientId = getEnvGoogleClientId();
-const savedSheetSettings = getSavedSheetSettings();
+const envGeminiKey = getEnvGeminiKey()
+const envGoogleClientId = getEnvGoogleClientId()
+const savedSheetSettings = getSavedSheetSettings()
 
 export function AppComponent() {
-  const [step, setStep] = useState<AppStep>("capture");
-  const [status, setStatus] = useState<WorkStatus>("idle");
-  const [statusText, setStatusText] = useState("Ready when you are");
-  const [progress, setProgress] = useState(0);
-  const [extraction, setExtraction] = useState<ReceiptExtraction | undefined>();
-  const activeReceiptIdRef = useRef<string | undefined>(undefined);
-  const [sheetUrl, setSheetUrl] = useState(savedSheetSettings.sheetUrl);
-  const [sheetName, setSheetName] = useState(savedSheetSettings.sheetName);
-  const [googleAccessToken, setGoogleAccessToken] = useState("");
+  const [step, setStep] = useState<AppStep>('capture')
+  const [status, setStatus] = useState<WorkStatus>('idle')
+  const [statusText, setStatusText] = useState('Ready when you are')
+  const [progress, setProgress] = useState(0)
+  const [extraction, setExtraction] = useState<ReceiptExtraction | undefined>()
+  const activeReceiptIdRef = useRef<string | undefined>(undefined)
+  const [sheetUrl, setSheetUrl] = useState(savedSheetSettings.sheetUrl)
+  const [sheetName, setSheetName] = useState(savedSheetSettings.sheetName)
+  const [googleAccessToken, setGoogleAccessToken] = useState('')
 
-  const lineTotal = useMemo(
-    () => sumItems(extraction?.items ?? []),
-    [extraction]
-  );
-  const isExtracting = status === "recognizing" || status === "refining";
-  const isSaving = status === "saving";
-  const isGoogleConnected = Boolean(googleAccessToken);
+  const lineTotal = useMemo(() => sumItems(extraction?.items ?? []), [extraction])
+  const isExtracting = status === 'recognizing' || status === 'refining'
+  const isSaving = status === 'saving'
+  const isGoogleConnected = Boolean(googleAccessToken)
 
-  function maybeRefineWeakExtraction(
-    rawText: string,
-    fallback: ReceiptExtraction
-  ) {
+  function maybeRefineWeakExtraction(rawText: string, fallback: ReceiptExtraction) {
     if (!envGeminiKey.trim() || !shouldRefineWithGemini(fallback)) {
-      return;
+      return
     }
 
     void refineReceiptWithGemini(envGeminiKey, rawText, fallback)
@@ -69,203 +54,196 @@ export function AppComponent() {
           activeReceiptIdRef.current !== fallback.receiptId ||
           refined.items.length < fallback.items.length
         ) {
-          return;
+          return
         }
 
-        let appliedStatus: string | undefined;
+        let appliedStatus: string | undefined
         setExtraction((current) => {
           if (
             !current ||
             current.receiptId !== fallback.receiptId ||
             current.items.length !== fallback.items.length
           ) {
-            return current;
+            return current
           }
 
-          appliedStatus = getReadyStatusText(refined);
-          return refined;
-        });
+          appliedStatus = getReadyStatusText(refined)
+          return refined
+        })
 
         if (appliedStatus) {
-          setStatus("ready");
-          setStatusText(appliedStatus);
+          setStatus('ready')
+          setStatusText(appliedStatus)
         }
       })
       .catch(() => {
         // Keep the local OCR result visible; Gemini is only a best-effort fallback.
-      });
+      })
   }
 
   const extractReceipt = useCallback(async (imageDataUri: string) => {
-    setStep("review");
-    setExtraction(undefined);
-    setStatus("recognizing");
-    setStatusText("Reading your receipt");
-    setProgress(8);
+    setStep('review')
+    setExtraction(undefined)
+    setStatus('recognizing')
+    setStatusText('Reading your receipt')
+    setProgress(8)
 
     try {
       const { ocrText, parsed } = await withToast(
         async () => {
           const ocr = await recognizeReceiptImage(imageDataUri, (nextProgress) => {
-            setProgress(nextProgress.progress);
-            setStatusText(toReadableStatus(nextProgress.status));
-          });
+            setProgress(nextProgress.progress)
+            setStatusText(toReadableStatus(nextProgress.status))
+          })
 
           return {
             ocrText: ocr.text,
-            parsed: parseReceiptText(ocr.text, { defaultCurrency: "GBP" }),
-          };
+            parsed: parseReceiptText(ocr.text, { defaultCurrency: 'GBP' }),
+          }
         },
         {
-          loading: "Reading your receipt",
+          loading: 'Reading your receipt',
           success: ({ parsed }) => getReadyStatusText(parsed),
-        }
-      );
-      activeReceiptIdRef.current = parsed.receiptId;
+        },
+      )
+      activeReceiptIdRef.current = parsed.receiptId
 
-      setStatus("ready");
-      setStatusText(getReadyStatusText(parsed));
-      setExtraction(parsed);
-      setProgress(100);
+      setStatus('ready')
+      setStatusText(getReadyStatusText(parsed))
+      setExtraction(parsed)
+      setProgress(100)
 
-      maybeRefineWeakExtraction(ocrText, parsed);
+      maybeRefineWeakExtraction(ocrText, parsed)
     } catch (error) {
-      setStatus("error");
-      setStatusText(getErrorMessage(error));
+      setStatus('error')
+      setStatusText(getErrorMessage(error))
     }
-  }, []);
+  }, [])
 
   const handleCameraError = useCallback((error: Error) => {
-    setStatus("error");
-    setStatusText(getErrorMessage(error));
-  }, []);
+    setStatus('error')
+    setStatusText(getErrorMessage(error))
+  }, [])
 
   function handleUpload(file: File | null) {
-    if (!file) return;
+    if (!file) return
 
-    const reader = new FileReader();
+    const reader = new FileReader()
     reader.onload = () => {
-      void extractReceipt(String(reader.result));
-    };
-    reader.readAsDataURL(file);
+      void extractReceipt(String(reader.result))
+    }
+    reader.readAsDataURL(file)
   }
 
   async function handleSaveToSheet() {
-    if (!extraction) return;
+    if (!extraction) return
 
-    setStatus("saving");
-    setStatusText("Saving to Google Sheet");
+    setStatus('saving')
+    setStatusText('Saving to Google Sheet')
 
     try {
       await withToast(
         async () => {
-          const accessToken = googleAccessToken || (await connectGoogle());
+          const accessToken = googleAccessToken || (await connectGoogle())
           await appendReceiptToGoogleSheet(
             {
               sheetUrl,
               sheetName,
               accessToken,
             },
-            extraction
-          );
-          saveSheetSettings({ sheetUrl, sheetName });
+            extraction,
+          )
+          saveSheetSettings({ sheetUrl, sheetName })
         },
         {
-          loading: "Saving to Google Sheet",
-          success: "Saved to Google Sheet",
-        }
-      );
-      setStatus("ready");
-      setStatusText("Saved to Google Sheet");
+          loading: 'Saving to Google Sheet',
+          success: 'Saved to Google Sheet',
+        },
+      )
+      setStatus('ready')
+      setStatusText('Saved to Google Sheet')
     } catch (error) {
-      setStatus("error");
-      setStatusText(getErrorMessage(error));
+      setStatus('error')
+      setStatusText(getErrorMessage(error))
     }
   }
 
   async function connectGoogle() {
-    const accessToken = await requestGoogleSheetsAccessToken(envGoogleClientId);
-    setGoogleAccessToken(accessToken);
-    return accessToken;
+    const accessToken = await requestGoogleSheetsAccessToken(envGoogleClientId)
+    setGoogleAccessToken(accessToken)
+    return accessToken
   }
 
   async function handleConnectGoogle() {
-    setStatus("saving");
-    setStatusText("Connecting to Google");
+    setStatus('saving')
+    setStatusText('Connecting to Google')
 
     try {
       await withToast(connectGoogle, {
-        loading: "Connecting to Google",
-        success: "Google connected",
-      });
-      setStatus("ready");
-      setStatusText("Google connected");
+        loading: 'Connecting to Google',
+        success: 'Google connected',
+      })
+      setStatus('ready')
+      setStatusText('Google connected')
     } catch (error) {
-      setStatus("error");
-      setStatusText(getErrorMessage(error));
+      setStatus('error')
+      setStatusText(getErrorMessage(error))
     }
   }
 
   function updateReceipt(patch: Partial<ReceiptExtraction>) {
-    setExtraction((current) => (current ? { ...current, ...patch } : current));
+    setExtraction((current) => (current ? { ...current, ...patch } : current))
   }
 
   function updateItem(id: string, patch: Partial<ReceiptItem>) {
     setExtraction((current) => {
-      if (!current) return current;
+      if (!current) return current
       return {
         ...current,
-        items: current.items.map((item) =>
-          item.id === id ? { ...item, ...patch } : item
-        ),
-      };
-    });
+        items: current.items.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+      }
+    })
   }
 
   function addItem() {
     setExtraction((current) => {
-      if (!current) return current;
+      if (!current) return current
       const item: ReceiptItem = {
         id: `manual-${Date.now()}`,
-        name: "New item",
+        name: 'New item',
         quantity: 1,
         totalPrice: 0,
         currency: current.currency,
         confidence: 1,
-      };
+      }
 
-      return { ...current, items: [...current.items, item] };
-    });
+      return { ...current, items: [...current.items, item] }
+    })
   }
 
   function removeItem(id: string) {
     setExtraction((current) => {
-      if (!current) return current;
+      if (!current) return current
       return {
         ...current,
         items: current.items.filter((item) => item.id !== id),
-      };
-    });
+      }
+    })
   }
 
   function startNewReceipt() {
-    setStep("capture");
-    setExtraction(undefined);
-    activeReceiptIdRef.current = undefined;
-    setProgress(0);
-    setStatus("idle");
-    setStatusText("Ready when you are");
+    setStep('capture')
+    setExtraction(undefined)
+    activeReceiptIdRef.current = undefined
+    setProgress(0)
+    setStatus('idle')
+    setStatusText('Ready when you are')
   }
 
   return (
     <Box component="main" className="receipt-app">
       <Paper component="div" className="app-shell" shadow="xl" radius={34}>
-        <Group
-          component="header"
-          className="app-status"
-          justify="space-between"
-          wrap="nowrap"
-        >
+        <Group component="header" className="app-status" justify="space-between" wrap="nowrap">
           <Badge
             className="brand-mark"
             p={0}
@@ -278,21 +256,15 @@ export function AppComponent() {
           <Badge
             className={`status-chip ${status}`}
             data-testid="receipt-status"
-            color={
-              status === "error"
-                ? "red"
-                : status === "ready"
-                ? "green"
-                : "receiptRed"
-            }
+            color={status === 'error' ? 'red' : status === 'ready' ? 'green' : 'receiptRed'}
             variant="light"
-            fw={"bold"}
+            fw={'bold'}
           >
             {statusText}
           </Badge>
         </Group>
 
-        {step === "capture" && (
+        {step === 'capture' && (
           <CaptureStep
             statusText={statusText}
             onCapture={(dataUri) => void extractReceipt(dataUri)}
@@ -301,11 +273,11 @@ export function AppComponent() {
           />
         )}
 
-        {step === "review" && isExtracting && (
+        {step === 'review' && isExtracting && (
           <LoadingStep statusText={statusText} progress={progress} />
         )}
 
-        {step === "review" && !isExtracting && extraction && (
+        {step === 'review' && !isExtracting && extraction && (
           <ReviewStep
             extraction={extraction}
             lineTotal={lineTotal}
@@ -328,45 +300,37 @@ export function AppComponent() {
           />
         )}
 
-        {step === "review" && !isExtracting && !extraction && (
-          <Paper
-            component="section"
-            className="screen-card empty-review"
-            shadow="none"
-          >
+        {step === 'review' && !isExtracting && !extraction && (
+          <Paper component="section" className="screen-card empty-review" shadow="none">
             <Text component="h1" fw={900}>
               We could not read that one
             </Text>
             <Text c="dimmed">{statusText}</Text>
-            <Button
-              leftSection={<IconRefresh size={18} />}
-              onClick={startNewReceipt}
-            >
+            <Button leftSection={<IconRefresh size={18} />} onClick={startNewReceipt}>
               Try again
             </Button>
           </Paper>
         )}
       </Paper>
     </Box>
-  );
+  )
 }
 
 function getReadyStatusText(extraction: ReceiptExtraction): string {
   if (extraction.items.length === 0) {
-    return "No rows found";
+    return 'No rows found'
   }
 
-  return `${extraction.items.length} rows ready`;
+  return `${extraction.items.length} rows ready`
 }
 
 function shouldRefineWithGemini(extraction: ReceiptExtraction): boolean {
   if (extraction.items.length === 0) {
-    return true;
+    return true
   }
 
   const averageConfidence =
-    extraction.items.reduce((total, item) => total + item.confidence, 0) /
-    extraction.items.length;
+    extraction.items.reduce((total, item) => total + item.confidence, 0) / extraction.items.length
 
-  return averageConfidence < 0.72;
+  return averageConfidence < 0.72
 }
