@@ -2,8 +2,9 @@ import type { ReceiptExtraction } from './receipt'
 import { sumItems } from './receipt'
 
 export type SheetSettings = {
-  endpointUrl: string
+  sheetUrl: string
   sheetName: string
+  accessToken: string
 }
 
 export type SheetRow = {
@@ -32,6 +33,19 @@ export type SheetPayload = {
   }
   rows: SheetRow[]
 }
+
+const sheetHeaders = [
+  'Receipt ID',
+  'Captured At',
+  'Merchant',
+  'Purchased At',
+  'Item',
+  'Quantity',
+  'Unit Price',
+  'Line Total',
+  'Currency',
+  'Receipt Total',
+]
 
 export function buildSheetRows(
   extraction: ReceiptExtraction,
@@ -76,84 +90,64 @@ export async function appendReceiptToGoogleSheet(
   settings: SheetSettings,
   extraction: ReceiptExtraction,
 ): Promise<void> {
-  const endpointUrl = settings.endpointUrl.trim()
-  validateSheetEndpointUrl(endpointUrl)
+  const spreadsheetId = parseSpreadsheetId(settings.sheetUrl)
+  const sheetName = settings.sheetName.trim() || 'Receipts'
+  const accessToken = settings.accessToken.trim()
 
-  const response = await fetch(endpointUrl, {
-    method: 'POST',
-    mode: 'no-cors',
-    headers: {
-      'Content-Type': 'text/plain;charset=utf-8',
-    },
-    body: JSON.stringify(buildSheetPayload(settings, extraction)),
-  })
-
-  if (response.type !== 'opaque' && !response.ok) {
-    throw new Error(`Google Sheet save failed with HTTP ${response.status}.`)
+  if (!accessToken) {
+    throw new Error('Connect Google before saving.')
   }
+
+  await ensureSheetExists(spreadsheetId, sheetName, accessToken)
+  await ensureHeaderRow(spreadsheetId, sheetName, accessToken)
+  await appendValues(
+    spreadsheetId,
+    sheetName,
+    buildSheetRows(extraction).map(sheetRowToValues),
+    accessToken,
+  )
 }
 
-export function validateSheetEndpointUrl(endpointUrl: string): void {
-  if (!endpointUrl) {
-    throw new Error('Add your Apps Script web app link before saving.')
+export function parseSpreadsheetId(sheetUrl: string): string {
+  const trimmed = sheetUrl.trim()
+  if (!trimmed) {
+    throw new Error('Add your Google Sheet link before saving.')
   }
 
-  let url: URL
+  if (/^[a-zA-Z0-9-_]{20,}$/.test(trimmed) && !trimmed.includes('/')) {
+    return trimmed
+  }
+
   try {
-    url = new URL(endpointUrl)
+    const url = new URL(trimmed)
+    const match = url.pathname.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
+    if (url.hostname === 'docs.google.com' && match?.[1]) {
+      return match[1]
+    }
   } catch {
-    throw new Error('Use a valid Apps Script web app URL ending in /exec.')
+    throw new Error('Use a valid Google Sheet link.')
   }
 
-  if (url.hostname === 'docs.google.com' && url.pathname.includes('/spreadsheets/')) {
-    throw new Error('Paste the Apps Script web app /exec URL, not the Google Sheet browser link.')
-  }
-
-  if (!url.hostname.endsWith('script.google.com') || !url.pathname.endsWith('/exec')) {
-    throw new Error('Use your deployed Apps Script web app URL ending in /exec.')
-  }
+  throw new Error('Use a Google Sheet link from docs.google.com/spreadsheets.')
 }
 
-export function createAppsScriptTemplate(): string {
-  return `const DEFAULT_SHEET = 'Receipts';
-
-function doPost(event) {
-  const payload = JSON.parse(event.postData.contents);
-  const sheet = SpreadsheetApp.getActive().getSheetByName(payload.sheetName || DEFAULT_SHEET)
-    || SpreadsheetApp.getActive().insertSheet(payload.sheetName || DEFAULT_SHEET);
-
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow([
-      'Receipt ID', 'Captured At', 'Merchant', 'Purchased At', 'Item', 'Quantity',
-      'Unit Price', 'Line Total', 'Currency', 'Receipt Total'
-    ]);
-  }
-
-  payload.rows.forEach((row) => {
-    sheet.appendRow([
-      row.receiptId, row.capturedAt, row.merchant, row.purchasedAt, row.itemName,
-      row.quantity, row.unitPrice, row.totalPrice, row.currency, row.receiptTotal
-    ]);
-  });
-
-  return ContentService
-    .createTextOutput(JSON.stringify({ ok: true, rows: payload.rows.length }))
-    .setMimeType(ContentService.MimeType.JSON);
-}`
+export function sheetRowToValues(row: SheetRow): Array<string | number> {
+  return [
+    row.receiptId,
+    row.capturedAt,
+    row.merchant,
+    row.purchasedAt,
+    row.itemName,
+    row.quantity,
+    row.unitPrice,
+    row.totalPrice,
+    row.currency,
+    row.receiptTotal,
+  ]
 }
 
 export function createReceiptCsv(extraction: ReceiptExtraction): string {
-  const headers = [
-    'Receipt ID',
-    'Merchant',
-    'Purchased At',
-    'Item',
-    'Quantity',
-    'Unit Price',
-    'Line Total',
-    'Currency',
-    'Receipt Total',
-  ]
+  const headers = sheetHeaders.filter((header) => header !== 'Captured At')
 
   const rows = buildSheetRows(extraction).map((row) => [
     row.receiptId,
@@ -184,4 +178,126 @@ export function downloadReceiptCsv(extraction: ReceiptExtraction): void {
 function formatCsvCell(value: string | number): string {
   const text = String(value)
   return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+}
+
+async function ensureSheetExists(
+  spreadsheetId: string,
+  sheetName: string,
+  accessToken: string,
+): Promise<void> {
+  const metadata = await fetchJson<{ sheets?: Array<{ properties?: { title?: string } }> }>(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`,
+    accessToken,
+  )
+
+  const exists = metadata.sheets?.some((sheet) => sheet.properties?.title === sheetName)
+  if (exists) {
+    return
+  }
+
+  await fetchJson(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
+    accessToken,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        requests: [
+          {
+            addSheet: {
+              properties: {
+                title: sheetName,
+              },
+            },
+          },
+        ],
+      }),
+    },
+  )
+}
+
+async function ensureHeaderRow(
+  spreadsheetId: string,
+  sheetName: string,
+  accessToken: string,
+): Promise<void> {
+  const firstRow = await fetchJson<{ values?: string[][] }>(
+    sheetApiUrl(spreadsheetId, `${quoteSheetName(sheetName)}!A1:J1`),
+    accessToken,
+  )
+
+  if (firstRow.values?.[0]?.length) {
+    return
+  }
+
+  await appendValues(spreadsheetId, sheetName, [sheetHeaders], accessToken)
+}
+
+async function appendValues(
+  spreadsheetId: string,
+  sheetName: string,
+  values: Array<Array<string | number>>,
+  accessToken: string,
+): Promise<void> {
+  if (!values.length) {
+    return
+  }
+
+  await fetchJson(
+    `${sheetApiUrl(spreadsheetId, `${quoteSheetName(sheetName)}!A:J`)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+    accessToken,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        majorDimension: 'ROWS',
+        values,
+      }),
+    },
+  )
+}
+
+function sheetApiUrl(spreadsheetId: string, range: string): string {
+  return `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`
+}
+
+function quoteSheetName(sheetName: string): string {
+  return `'${sheetName.replace(/'/g, "''")}'`
+}
+
+async function fetchJson<T>(
+  url: string,
+  accessToken: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const response = await fetch(url, {
+    ...init,
+    headers: {
+      ...init.headers,
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  })
+
+  if (!response.ok) {
+    const message = await readGoogleError(response)
+    throw new Error(message)
+  }
+
+  return (await response.json()) as T
+}
+
+async function readGoogleError(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as { error?: { message?: string } }
+    if (body.error?.message) {
+      return body.error.message
+    }
+  } catch {
+    // Fall through to status-based message.
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    return 'Google did not allow access to this Sheet. Reconnect Google or check sharing permissions.'
+  }
+
+  return `Google Sheet save failed with HTTP ${response.status}.`
 }

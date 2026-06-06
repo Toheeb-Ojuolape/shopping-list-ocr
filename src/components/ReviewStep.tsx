@@ -36,15 +36,18 @@ type ReviewStepProps = {
   lineTotal: number
   statusText: string
   isSaving: boolean
-  sheetEndpoint: string
+  sheetUrl: string
   sheetName: string
+  isGoogleConnected: boolean
+  hasGoogleClientId: boolean
   onNewReceipt: () => void
   onUpdateReceipt: (patch: Partial<ReceiptExtraction>) => void
   onUpdateItem: (id: string, patch: Partial<ReceiptItem>) => void
   onAddItem: () => void
   onRemoveItem: (id: string) => void
-  onSheetEndpointChange: (value: string) => void
+  onSheetUrlChange: (value: string) => void
   onSheetNameChange: (value: string) => void
+  onConnectGoogle: () => void
   onSaveToSheet: () => void
   onDownloadCsv: () => void
 }
@@ -54,15 +57,18 @@ export function ReviewStep({
   lineTotal,
   statusText,
   isSaving,
-  sheetEndpoint,
+  sheetUrl,
   sheetName,
+  isGoogleConnected,
+  hasGoogleClientId,
   onNewReceipt,
   onUpdateReceipt,
   onUpdateItem,
   onAddItem,
   onRemoveItem,
-  onSheetEndpointChange,
+  onSheetUrlChange,
   onSheetNameChange,
+  onConnectGoogle,
   onSaveToSheet,
   onDownloadCsv,
 }: ReviewStepProps) {
@@ -131,10 +137,13 @@ export function ReviewStep({
       <SavePanel
         statusText={statusText}
         isSaving={isSaving}
-        sheetEndpoint={sheetEndpoint}
+        sheetUrl={sheetUrl}
         sheetName={sheetName}
-        onSheetEndpointChange={onSheetEndpointChange}
+        isGoogleConnected={isGoogleConnected}
+        hasGoogleClientId={hasGoogleClientId}
+        onSheetUrlChange={onSheetUrlChange}
         onSheetNameChange={onSheetNameChange}
+        onConnectGoogle={onConnectGoogle}
         onSaveToSheet={onSaveToSheet}
         onDownloadCsv={onDownloadCsv}
       />
@@ -197,19 +206,25 @@ function ItemList({
 function SavePanel({
   statusText,
   isSaving,
-  sheetEndpoint,
+  sheetUrl,
   sheetName,
-  onSheetEndpointChange,
+  isGoogleConnected,
+  hasGoogleClientId,
+  onSheetUrlChange,
   onSheetNameChange,
+  onConnectGoogle,
   onSaveToSheet,
   onDownloadCsv,
 }: {
   statusText: string
   isSaving: boolean
-  sheetEndpoint: string
+  sheetUrl: string
   sheetName: string
-  onSheetEndpointChange: (value: string) => void
+  isGoogleConnected: boolean
+  hasGoogleClientId: boolean
+  onSheetUrlChange: (value: string) => void
   onSheetNameChange: (value: string) => void
+  onConnectGoogle: () => void
   onSaveToSheet: () => void
   onDownloadCsv: () => void
 }) {
@@ -223,11 +238,11 @@ function SavePanel({
 
         <Stack>
           <TextInput
-            label="Apps Script link"
+            label="Google Sheet link"
             classNames={darkFieldClassNames}
-            value={sheetEndpoint}
-            onChange={(event) => onSheetEndpointChange(event.target.value)}
-            placeholder="Paste your deployed /exec link"
+            value={sheetUrl}
+            onChange={(event) => onSheetUrlChange(event.target.value)}
+            placeholder="Paste your docs.google.com Sheet link"
           />
           <TextInput
             label="Sheet tab"
@@ -237,6 +252,16 @@ function SavePanel({
           />
         </Stack>
 
+        {!isGoogleConnected && <Button
+          variant="light"
+          color={isGoogleConnected ? 'green' : 'receiptRed'}
+          leftSection={<IconSend size={18} />}
+          className="secondary-button"
+          disabled={!hasGoogleClientId || isGoogleConnected}
+          onClick={onConnectGoogle}
+        >
+          Connect Your Google
+        </Button>}
         <Button
           loading={isSaving}
           leftSection={<IconSend size={18} />}

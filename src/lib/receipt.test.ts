@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mergeGeminiPayload } from './gemini'
-import { buildSheetRows, createReceiptCsv, validateSheetEndpointUrl } from './googleSheets'
+import { buildSheetRows, createReceiptCsv, parseSpreadsheetId } from './googleSheets'
 import { parseReceiptText, sumItems } from './receipt'
 
 describe('receipt parsing', () => {
@@ -155,9 +155,9 @@ describe('sheet and CSV exports', () => {
     expect(csv).not.toContain('data:image')
   })
 
-  it('rejects spreadsheet browser links before trying to save', () => {
-    expect(() =>
-      validateSheetEndpointUrl('https://docs.google.com/spreadsheets/d/sheet-id/edit'),
-    ).toThrow('Paste the Apps Script web app /exec URL')
+  it('extracts spreadsheet IDs from normal Google Sheet links', () => {
+    expect(parseSpreadsheetId('https://docs.google.com/spreadsheets/d/sheet-id_123/edit')).toBe(
+      'sheet-id_123',
+    )
   })
 })

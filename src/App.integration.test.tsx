@@ -3,6 +3,7 @@ import { MantineProvider } from '@mantine/core'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { ReceiptCamera } from './components/ReceiptCamera'
+import { requestGoogleSheetsAccessToken } from './lib/googleAuth'
 import { appendReceiptToGoogleSheet, downloadReceiptCsv } from './lib/googleSheets'
 import { recognizeReceiptImage } from './lib/ocr'
 import { theme } from './theme'
@@ -24,7 +25,12 @@ vi.mock('./lib/googleSheets', () => ({
   downloadReceiptCsv: vi.fn(),
 }))
 
+vi.mock('./lib/googleAuth', () => ({
+  requestGoogleSheetsAccessToken: vi.fn(),
+}))
+
 const recognizeReceiptImageMock = vi.mocked(recognizeReceiptImage)
+const requestGoogleSheetsAccessTokenMock = vi.mocked(requestGoogleSheetsAccessToken)
 const appendReceiptToGoogleSheetMock = vi.mocked(appendReceiptToGoogleSheet)
 const downloadReceiptCsvMock = vi.mocked(downloadReceiptCsv)
 
@@ -33,6 +39,7 @@ describe('App integration', () => {
     localStorage.clear()
     vi.clearAllMocks()
     recognizeReceiptImageMock.mockResolvedValue({ text: receiptOcrText, confidence: 98 })
+    requestGoogleSheetsAccessTokenMock.mockResolvedValue('test-access-token')
     appendReceiptToGoogleSheetMock.mockResolvedValue(undefined)
     mockCamera()
   })
@@ -52,8 +59,8 @@ describe('App integration', () => {
     fireEvent.change(within(firstRow).getByLabelText('Item'), { target: { value: 'Organic Bananas' } })
     fireEvent.change(within(firstRow).getByLabelText('Price'), { target: { value: '1.50' } })
 
-    fireEvent.change(screen.getByLabelText('Apps Script link'), {
-      target: { value: 'https://script.google.com/macros/s/test/exec' },
+    fireEvent.change(screen.getByLabelText('Google Sheet link'), {
+      target: { value: 'https://docs.google.com/spreadsheets/d/test-sheet-id/edit' },
     })
     fireEvent.change(screen.getByLabelText('Sheet tab'), { target: { value: 'June Receipts' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save to Google Sheet' }))
@@ -61,8 +68,9 @@ describe('App integration', () => {
     await waitFor(() => expect(appendReceiptToGoogleSheetMock).toHaveBeenCalledTimes(1))
     expect(appendReceiptToGoogleSheetMock).toHaveBeenCalledWith(
       {
-        endpointUrl: 'https://script.google.com/macros/s/test/exec',
+        sheetUrl: 'https://docs.google.com/spreadsheets/d/test-sheet-id/edit',
         sheetName: 'June Receipts',
+        accessToken: 'test-access-token',
       },
       expect.objectContaining({
         merchant: 'Fresh Mart',
@@ -79,7 +87,7 @@ describe('App integration', () => {
   })
 
   it('shows a useful error when saving without a Google Sheets link', async () => {
-    appendReceiptToGoogleSheetMock.mockRejectedValue(new Error('Add your Apps Script web app link before saving.'))
+    appendReceiptToGoogleSheetMock.mockRejectedValue(new Error('Add your Google Sheet link before saving.'))
 
     render(<App />)
 
@@ -88,7 +96,7 @@ describe('App integration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save to Google Sheet' }))
 
     await waitFor(() =>
-      expect(screen.getByTestId('receipt-status')).toHaveTextContent('Add your Apps Script web app link before saving.'),
+      expect(screen.getByTestId('receipt-status')).toHaveTextContent('Add your Google Sheet link before saving.'),
     )
   })
 
