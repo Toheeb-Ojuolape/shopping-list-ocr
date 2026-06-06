@@ -1,8 +1,11 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MantineProvider } from '@mantine/core'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { ReceiptCamera } from './components/ReceiptCamera'
 import { appendReceiptToGoogleSheet, downloadReceiptCsv } from './lib/googleSheets'
 import { recognizeReceiptImage } from './lib/ocr'
+import { theme } from './theme'
 
 const receiptOcrText = `
 FRESH MART
@@ -49,7 +52,7 @@ describe('App integration', () => {
     fireEvent.change(within(firstRow).getByLabelText('Item'), { target: { value: 'Organic Bananas' } })
     fireEvent.change(within(firstRow).getByLabelText('Price'), { target: { value: '1.50' } })
 
-    fireEvent.change(screen.getByLabelText('Google Sheet link'), {
+    fireEvent.change(screen.getByLabelText('Apps Script link'), {
       target: { value: 'https://script.google.com/macros/s/test/exec' },
     })
     fireEvent.change(screen.getByLabelText('Sheet tab'), { target: { value: 'June Receipts' } })
@@ -76,7 +79,7 @@ describe('App integration', () => {
   })
 
   it('shows a useful error when saving without a Google Sheets link', async () => {
-    appendReceiptToGoogleSheetMock.mockRejectedValue(new Error('Add your Google Sheet link before saving.'))
+    appendReceiptToGoogleSheetMock.mockRejectedValue(new Error('Add your Apps Script web app link before saving.'))
 
     render(<App />)
 
@@ -85,8 +88,42 @@ describe('App integration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save to Google Sheet' }))
 
     await waitFor(() =>
-      expect(screen.getByTestId('receipt-status')).toHaveTextContent('Add your Google Sheet link before saving.'),
+      expect(screen.getByTestId('receipt-status')).toHaveTextContent('Add your Apps Script web app link before saving.'),
     )
+  })
+
+  it('only enables the snap button when the camera can provide a frame', async () => {
+    const onCapture = vi.fn()
+    const getContextSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue(
+      'data:image/jpeg;base64,capture',
+    )
+
+    const { container } = render(
+      <MantineProvider theme={theme}>
+        <ReceiptCamera onCapture={onCapture} onError={vi.fn()} />
+      </MantineProvider>,
+    )
+
+    const snapButton = screen.getByRole('button', { name: 'Capture receipt' })
+    expect(snapButton).toBeDisabled()
+
+    const video = container.querySelector('video') as HTMLVideoElement
+    Object.defineProperties(video, {
+      readyState: { configurable: true, value: 2 },
+      videoHeight: { configurable: true, value: 480 },
+      videoWidth: { configurable: true, value: 640 },
+    })
+
+    fireEvent.canPlay(video)
+    expect(snapButton).toBeEnabled()
+
+    fireEvent.click(snapButton)
+
+    expect(getContextSpy).toHaveBeenCalledWith('2d')
+    expect(onCapture).toHaveBeenCalledWith('data:image/jpeg;base64,capture')
   })
 })
 

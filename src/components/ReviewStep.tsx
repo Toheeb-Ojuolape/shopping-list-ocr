@@ -152,7 +152,7 @@ function ItemList({
   onRemoveItem: (id: string) => void
 }) {
   return (
-    <Stack className="native-list" aria-label="Extracted items" gap="sm">
+    <Stack aria-label="Extracted items">
       {items.map((item) => (
         <Paper className="native-row" data-testid="item-row" key={item.id} shadow="sm">
           <TextInput
@@ -223,11 +223,11 @@ function SavePanel({
 
         <Stack>
           <TextInput
-            label="Google Sheet link"
+            label="Apps Script link"
             classNames={darkFieldClassNames}
             value={sheetEndpoint}
             onChange={(event) => onSheetEndpointChange(event.target.value)}
-            placeholder="Paste your Sheet app link"
+            placeholder="Paste your deployed /exec link"
           />
           <TextInput
             label="Sheet tab"

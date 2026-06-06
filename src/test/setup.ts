@@ -18,6 +18,11 @@ if (!window.matchMedia) {
   })
 }
 
+Object.defineProperty(HTMLMediaElement.prototype, 'play', {
+  configurable: true,
+  value: vi.fn().mockResolvedValue(undefined),
+})
+
 afterEach(() => {
   cleanup()
 })

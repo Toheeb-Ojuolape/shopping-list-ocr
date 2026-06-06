@@ -77,9 +77,7 @@ export async function appendReceiptToGoogleSheet(
   extraction: ReceiptExtraction,
 ): Promise<void> {
   const endpointUrl = settings.endpointUrl.trim()
-  if (!endpointUrl) {
-    throw new Error('Add your Google Sheet link before saving.')
-  }
+  validateSheetEndpointUrl(endpointUrl)
 
   const response = await fetch(endpointUrl, {
     method: 'POST',
@@ -92,6 +90,27 @@ export async function appendReceiptToGoogleSheet(
 
   if (response.type !== 'opaque' && !response.ok) {
     throw new Error(`Google Sheet save failed with HTTP ${response.status}.`)
+  }
+}
+
+export function validateSheetEndpointUrl(endpointUrl: string): void {
+  if (!endpointUrl) {
+    throw new Error('Add your Apps Script web app link before saving.')
+  }
+
+  let url: URL
+  try {
+    url = new URL(endpointUrl)
+  } catch {
+    throw new Error('Use a valid Apps Script web app URL ending in /exec.')
+  }
+
+  if (url.hostname === 'docs.google.com' && url.pathname.includes('/spreadsheets/')) {
+    throw new Error('Paste the Apps Script web app /exec URL, not the Google Sheet browser link.')
+  }
+
+  if (!url.hostname.endsWith('script.google.com') || !url.pathname.endsWith('/exec')) {
+    throw new Error('Use your deployed Apps Script web app URL ending in /exec.')
   }
 }
 

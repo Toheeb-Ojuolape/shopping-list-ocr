@@ -10,6 +10,7 @@ type ReceiptCameraProps = {
 export function ReceiptCamera({ onCapture, onError }: ReceiptCameraProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [isReady, setIsReady] = useState(false)
+  const [isCapturing, setIsCapturing] = useState(false)
 
   useEffect(() => {
     let stream: MediaStream | undefined
@@ -22,6 +23,7 @@ export function ReceiptCamera({ onCapture, onError }: ReceiptCameraProps) {
       }
 
       try {
+        setIsReady(false)
         stream = await navigator.mediaDevices.getUserMedia({
           audio: false,
           video: {
@@ -33,7 +35,11 @@ export function ReceiptCamera({ onCapture, onError }: ReceiptCameraProps) {
 
         if (videoRef.current && isMounted) {
           videoRef.current.srcObject = stream
-          setIsReady(true)
+          void videoRef.current.play().catch(() => {
+            if (isMounted) {
+              setIsReady(false)
+            }
+          })
         }
       } catch (error) {
         if (isMounted) {
@@ -50,33 +56,49 @@ export function ReceiptCamera({ onCapture, onError }: ReceiptCameraProps) {
     }
   }, [onError])
 
-  function captureFrame() {
+  function markCameraReady() {
     const video = videoRef.current
-    if (!video || !video.videoWidth || !video.videoHeight) {
-      onError(new Error('Camera is still warming up.'))
+    setIsReady(Boolean(video?.videoWidth && video.videoHeight && video.readyState >= 2))
+  }
+
+  function captureFrame() {
+    if (isCapturing) {
       return
     }
 
+    const video = videoRef.current
+    if (!video || !video.videoWidth || !video.videoHeight || video.readyState < 2) {
+      onError(new Error('Camera is still warming up.'))
+      setIsReady(false)
+      return
+    }
+
+    setIsCapturing(true)
     const canvas = document.createElement('canvas')
     canvas.width = video.videoWidth
     canvas.height = video.videoHeight
     const context = canvas.getContext('2d')
     if (!context) {
+      setIsCapturing(false)
       onError(new Error('Could not capture a camera frame.'))
       return
     }
 
-    context.drawImage(video, 0, 0, canvas.width, canvas.height)
-    onCapture(canvas.toDataURL('image/jpeg', 0.92))
+    try {
+      context.drawImage(video, 0, 0, canvas.width, canvas.height)
+      onCapture(canvas.toDataURL('image/jpeg', 0.92))
+    } finally {
+      setIsCapturing(false)
+    }
   }
 
   return (
     <div className="live-camera">
-      <video ref={videoRef} autoPlay muted playsInline />
+      <video ref={videoRef} autoPlay muted playsInline onLoadedMetadata={markCameraReady} onCanPlay={markCameraReady} />
       <ActionIcon
         type="button"
         className="shutter-button"
-        disabled={!isReady}
+        disabled={!isReady || isCapturing}
         onClick={captureFrame}
         aria-label="Capture receipt"
         color="receiptRed"

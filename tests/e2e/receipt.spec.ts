@@ -33,7 +33,7 @@ test('extracts a receipt, edits rows, saves to Google Sheets, and exports CSV', 
   await firstRow.getByLabel('Item').fill('Pink Lady Apples')
   await firstRow.getByLabel('Price').fill('2.55')
 
-  await page.getByLabel('Google Sheet link').fill('https://script.google.com/macros/s/e2e/exec')
+  await page.getByLabel('Apps Script link').fill('https://script.google.com/macros/s/e2e/exec')
   await page.getByLabel('Sheet tab').fill('E2E Receipts')
   await page.getByRole('button', { name: 'Save to Google Sheet' }).click()
 

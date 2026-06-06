@@ -1,11 +1,6 @@
 import { Badge, Box, Button, Group, Paper, Text } from "@mantine/core";
-import {
-  IconCancel,
-  IconCheck,
-  IconReceipt2,
-  IconRefresh,
-} from "@tabler/icons-react";
-import { useCallback, useMemo, useState } from "react";
+import { IconReceipt, IconRefresh } from "@tabler/icons-react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { CaptureStep } from "./components/CaptureStep";
 import { LoadingStep } from "./components/LoadingStep";
 import { ReviewStep } from "./components/ReviewStep";
@@ -42,6 +37,7 @@ export function AppComponent() {
   const [statusText, setStatusText] = useState("Ready when you are");
   const [progress, setProgress] = useState(0);
   const [extraction, setExtraction] = useState<ReceiptExtraction | undefined>();
+  const activeReceiptIdRef = useRef<string | undefined>(undefined);
   const [sheetEndpoint, setSheetEndpoint] = useState(
     savedSheetSettings.endpointUrl
   );
@@ -53,6 +49,47 @@ export function AppComponent() {
   );
   const isExtracting = status === "recognizing" || status === "refining";
   const isSaving = status === "saving";
+
+  function maybeRefineWeakExtraction(
+    rawText: string,
+    fallback: ReceiptExtraction
+  ) {
+    if (!envGeminiKey.trim() || !shouldRefineWithGemini(fallback)) {
+      return;
+    }
+
+    void refineReceiptWithGemini(envGeminiKey, rawText, fallback)
+      .then((refined) => {
+        if (
+          activeReceiptIdRef.current !== fallback.receiptId ||
+          refined.items.length < fallback.items.length
+        ) {
+          return;
+        }
+
+        let appliedStatus: string | undefined;
+        setExtraction((current) => {
+          if (
+            !current ||
+            current.receiptId !== fallback.receiptId ||
+            current.items.length !== fallback.items.length
+          ) {
+            return current;
+          }
+
+          appliedStatus = getReadyStatusText(refined);
+          return refined;
+        });
+
+        if (appliedStatus) {
+          setStatus("ready");
+          setStatusText(appliedStatus);
+        }
+      })
+      .catch(() => {
+        // Keep the local OCR result visible; Gemini is only a best-effort fallback.
+      });
+  }
 
   const extractReceipt = useCallback(async (imageDataUri: string) => {
     setStep("review");
@@ -67,18 +104,15 @@ export function AppComponent() {
         setStatusText(toReadableStatus(nextProgress.status));
       });
 
-      let parsed = parseReceiptText(ocr.text, { defaultCurrency: "GBP" });
+      const parsed = parseReceiptText(ocr.text, { defaultCurrency: "GBP" });
+      activeReceiptIdRef.current = parsed.receiptId;
 
-      if (envGeminiKey.trim()) {
-        setStatus("refining");
-        setStatusText("Tidying up the list");
-        parsed = await refineReceiptWithGemini(envGeminiKey, ocr.text, parsed);
-      }
-
-      setExtraction(parsed);
       setStatus("ready");
-      setStatusText(`${parsed.items.length} rows ready`);
+      setStatusText(getReadyStatusText(parsed));
+      setExtraction(parsed);
       setProgress(100);
+
+      maybeRefineWeakExtraction(ocr.text, parsed);
     } catch (error) {
       setStatus("error");
       setStatusText(
@@ -170,6 +204,7 @@ export function AppComponent() {
   function startNewReceipt() {
     setStep("capture");
     setExtraction(undefined);
+    activeReceiptIdRef.current = undefined;
     setProgress(0);
     setStatus("idle");
     setStatusText("Ready when you are");
@@ -191,7 +226,7 @@ export function AppComponent() {
             color="receiptRed"
             aria-label="Receipt app"
           >
-            <IconReceipt2 size={20} stroke={2.2} />
+            <IconReceipt size={16} />
           </Badge>
           <Badge
             className={`status-chip ${status}`}
@@ -206,11 +241,6 @@ export function AppComponent() {
             variant="light"
             fw={"bold"}
           >
-            {status === "error" ? (
-              <IconCancel color={"red"} size={13} />
-            ) : (
-              <IconCheck color={"green"} size={13} />
-            )}{" "}
             {statusText}
           </Badge>
         </Group>
@@ -269,4 +299,24 @@ export function AppComponent() {
       </Paper>
     </Box>
   );
+}
+
+function getReadyStatusText(extraction: ReceiptExtraction): string {
+  if (extraction.items.length === 0) {
+    return "No rows found";
+  }
+
+  return `${extraction.items.length} rows ready`;
+}
+
+function shouldRefineWithGemini(extraction: ReceiptExtraction): boolean {
+  if (extraction.items.length === 0) {
+    return true;
+  }
+
+  const averageConfidence =
+    extraction.items.reduce((total, item) => total + item.confidence, 0) /
+    extraction.items.length;
+
+  return averageConfidence < 0.72;
 }

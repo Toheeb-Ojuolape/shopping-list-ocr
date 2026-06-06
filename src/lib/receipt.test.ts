@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mergeGeminiPayload } from './gemini'
-import { buildSheetRows, createReceiptCsv } from './googleSheets'
+import { buildSheetRows, createReceiptCsv, validateSheetEndpointUrl } from './googleSheets'
 import { parseReceiptText, sumItems } from './receipt'
 
 describe('receipt parsing', () => {
@@ -50,6 +50,58 @@ describe('receipt parsing', () => {
     expect(extraction.items.map((item) => item.name)).toEqual(['Coffee', 'Sandwich'])
     expect(extraction.total).toBe(7.05)
     expect(sumItems(extraction.items)).toBe(7.05)
+  })
+
+  it('recovers useful rows from messy generic OCR without Gemini', () => {
+    const extraction = parseReceiptText(
+      `
+      TESCO EXPRESS
+      VAT NO 123456789
+      12/05/26 18:24
+      12345 STRAWBERRIES
+      £2.50
+      BANANAS 2 @ 0.65 1.30 T
+      OAT MILK 3 x 1.O0 3.O0
+      SUB-TOTAL £6.80
+      TOTAL GBP 6.80
+      VISA 6.80
+      `,
+      { defaultCurrency: 'GBP' },
+    )
+
+    expect(extraction.merchant).toBe('Tesco Express')
+    expect(extraction.items.map((item) => item.name)).toEqual([
+      'Strawberries',
+      'Bananas',
+      'Oat Milk',
+    ])
+    expect(extraction.items[1]).toMatchObject({
+      quantity: 2,
+      unitPrice: 0.65,
+      totalPrice: 1.3,
+    })
+    expect(extraction.items[2]).toMatchObject({
+      quantity: 3,
+      unitPrice: 1,
+      totalPrice: 3,
+    })
+    expect(extraction.total).toBe(6.8)
+  })
+
+  it('infers likely store and item names from OCR noise without hardcoded typo mappings', () => {
+    const extraction = parseReceiptText(
+      `
+      ALDT
+      Oang 1.20
+      lce 2.50
+      TOTAL 3.70
+      `,
+      { defaultCurrency: 'GBP' },
+    )
+
+    expect(extraction.merchant).toBe('Aldi')
+    expect(extraction.items.map((item) => item.name)).toEqual(['Orange', 'Rice'])
+    expect(extraction.warnings).toContain('Inferred store name "Aldi" from OCR text "Aldt".')
   })
 })
 
@@ -101,5 +153,11 @@ describe('sheet and CSV exports', () => {
     expect(csv).toContain('"A&B ""Shop"""')
     expect(csv).toContain('Milk <Large>')
     expect(csv).not.toContain('data:image')
+  })
+
+  it('rejects spreadsheet browser links before trying to save', () => {
+    expect(() =>
+      validateSheetEndpointUrl('https://docs.google.com/spreadsheets/d/sheet-id/edit'),
+    ).toThrow('Paste the Apps Script web app /exec URL')
   })
 })

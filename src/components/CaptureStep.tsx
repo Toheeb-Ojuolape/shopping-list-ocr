@@ -18,7 +18,7 @@ export function CaptureStep({ statusText, onCapture, onUpload, onCameraError }: 
         </ThemeIcon>
         <Stack gap={2}>
           <Text className="step-kicker">Scan receipt</Text>
-          <Title order={1}>Place the receipt in frame</Title>
+          <Title style={{marginTop: "-5px"}} order={5}>Place the receipt in frame</Title>
         </Stack>
       </Group>
 
