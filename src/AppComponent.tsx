@@ -11,7 +11,7 @@ import { appendReceiptToGoogleSheet, downloadReceiptCsv } from './lib/googleShee
 import { normalizeMerchantName } from './lib/ocrCorrection'
 import { recognizeReceiptImage } from './lib/ocr'
 import type { ReceiptExtraction, ReceiptItem } from './lib/receipt'
-import { parseReceiptText, sumItems } from './lib/receipt'
+import { parseReceiptText, roundMoney, sumItems } from './lib/receipt'
 import {
   getEnvGeminiKey,
   getEnvGoogleClientId,
@@ -241,9 +241,14 @@ export function AppComponent() {
   function updateItem(id: string, patch: Partial<ReceiptItem>) {
     setExtraction((current) => {
       if (!current) return current
+      const items = current.items.map((item) =>
+        item.id === id ? applyItemPatch(item, patch) : item,
+      )
+
       return {
         ...current,
-        items: current.items.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+        items,
+        total: sumItems(items),
       }
     })
   }
@@ -260,17 +265,16 @@ export function AppComponent() {
         confidence: 1,
       }
 
-      return { ...current, items: [...current.items, item] }
+      const items = [...current.items, item]
+      return { ...current, items, total: sumItems(items) }
     })
   }
 
   function removeItem(id: string) {
     setExtraction((current) => {
       if (!current) return current
-      return {
-        ...current,
-        items: current.items.filter((item) => item.id !== id),
-      }
+      const items = current.items.filter((item) => item.id !== id)
+      return { ...current, items, total: sumItems(items) }
     })
   }
 
@@ -359,6 +363,39 @@ export function AppComponent() {
       </Paper>
     </Box>
   )
+}
+
+function applyItemPatch(item: ReceiptItem, patch: Partial<ReceiptItem>): ReceiptItem {
+  const nextItem = { ...item, ...patch }
+  const quantityChanged = patch.quantity !== undefined
+  const unitPriceChanged = patch.unitPrice !== undefined
+  const totalPriceChanged = patch.totalPrice !== undefined
+
+  if (quantityChanged || unitPriceChanged) {
+    const quantity = Math.max(0, nextItem.quantity)
+    const unitPrice =
+      patch.unitPrice ??
+      item.unitPrice ??
+      (item.quantity > 0 ? roundMoney(item.totalPrice / item.quantity) : item.totalPrice)
+
+    return {
+      ...nextItem,
+      quantity,
+      unitPrice,
+      totalPrice: roundMoney(unitPrice * quantity),
+    }
+  }
+
+  if (totalPriceChanged) {
+    return {
+      ...nextItem,
+      totalPrice: roundMoney(nextItem.totalPrice),
+      unitPrice:
+        nextItem.quantity > 1 ? roundMoney(nextItem.totalPrice / nextItem.quantity) : undefined,
+    }
+  }
+
+  return nextItem
 }
 
 function getReadyStatusText(extraction: ReceiptExtraction): string {
