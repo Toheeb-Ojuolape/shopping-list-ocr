@@ -1,5 +1,6 @@
 import {
   ActionIcon,
+  Autocomplete,
   Button,
   Group,
   NumberInput,
@@ -18,8 +19,10 @@ import {
   IconSend,
   IconTrash,
 } from '@tabler/icons-react'
+import { inferMerchantName } from '../lib/ocrCorrection'
 import type { ReceiptExtraction, ReceiptItem } from '../lib/receipt'
-import { formatMoney, toPositiveNumber } from '../lib/utils'
+import { merchantLexicon } from '../lib/receiptLexicon'
+import { formatMoney, today, toPositiveNumber } from '../lib/utils'
 
 const fieldClassNames = {
   input: 'field-input',
@@ -73,6 +76,7 @@ export function ReviewStep({
   onDownloadCsv,
 }: ReviewStepProps) {
   const receiptTotal = extraction.total ?? lineTotal
+  const date = extraction.purchasedAt ?? today
 
   return (
     <Stack component="section" className="review-screen" aria-label="Review receipt" gap="sm">
@@ -107,17 +111,24 @@ export function ReviewStep({
       </Paper>
 
       <SimpleGrid className="mini-fields" cols={2} spacing="sm">
-        <TextInput
+        <Autocomplete
           label="Store"
           classNames={fieldClassNames}
+          data={merchantLexicon}
+          limit={8}
+          maxDropdownHeight={220}
           value={extraction.merchant}
-          onChange={(event) => onUpdateReceipt({ merchant: event.target.value })}
+          onChange={(value) => onUpdateReceipt({ merchant: value })}
+          onBlur={() => {
+            const inferred = inferMerchantName(extraction.merchant)
+            onUpdateReceipt({ merchant: inferred.value })
+          }}
         />
         <TextInput
           label="Date"
           classNames={fieldClassNames}
           type="date"
-          value={extraction.purchasedAt ?? ''}
+          value={date}
           onChange={(event) => onUpdateReceipt({ purchasedAt: event.target.value })}
         />
       </SimpleGrid>
@@ -210,11 +221,8 @@ function SavePanel({
   isSaving,
   sheetUrl,
   sheetName,
-  isGoogleConnected,
-  hasGoogleClientId,
   onSheetUrlChange,
   onSheetNameChange,
-  onConnectGoogle,
   onSaveToSheet,
   onDownloadCsv,
 }: {
@@ -256,7 +264,7 @@ function SavePanel({
           />
         </Stack>
 
-        {!isGoogleConnected && (
+        {/* {!isGoogleConnected && (
           <Button
             variant="light"
             color={isGoogleConnected ? 'green' : 'receiptRed'}
@@ -267,7 +275,7 @@ function SavePanel({
           >
             Connect Your Google
           </Button>
-        )}
+        )} */}
         <Button
           loading={isSaving}
           leftSection={<IconSend size={18} />}

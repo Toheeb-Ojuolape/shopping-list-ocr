@@ -38,6 +38,21 @@ const itemWordLexicon = Array.from(
 
 const itemWordSet = new Set(itemWordLexicon.map(normalizeComparable))
 
+const genericMerchantTokens = new Set([
+  'express',
+  'food',
+  'foods',
+  'fresh',
+  'grocery',
+  'grocer',
+  'market',
+  'mart',
+  'pharmacy',
+  'shop',
+  'store',
+  'supermarket',
+])
+
 const ocrAlternates: Record<string, string[]> = {
   '0': ['o'],
   '1': ['i', 'l'],
@@ -58,7 +73,16 @@ const ocrAlternates: Record<string, string[]> = {
 }
 
 export function inferMerchantName(value: string): CorrectionResult {
-  return inferFromLexicon(value, merchantLexicon, merchantOptions, ratio)
+  const result = inferFromLexicon(value, merchantLexicon, merchantOptions, ratio)
+  if (result.corrected && !hasMerchantTokenSupport(value, result.value)) {
+    return {
+      value: normalizeDisplayText(value),
+      corrected: false,
+      score: result.score,
+    }
+  }
+
+  return result
 }
 
 export function inferItemName(value: string): CorrectionResult {
@@ -199,4 +223,19 @@ function normalizeComparable(value: string): string {
 
 function tokenizeWords(value: string): string[] {
   return value.match(/[a-z0-9]+/gi) ?? []
+}
+
+function hasMerchantTokenSupport(source: string, match: string): boolean {
+  const matchTokens = tokenizeWords(match)
+  const sourceTokens = tokenizeWords(source).filter(
+    (token) => token.length > 2 && !genericMerchantTokens.has(token.toLowerCase()),
+  )
+
+  if (!sourceTokens.length) {
+    return true
+  }
+
+  return sourceTokens.every((sourceToken) =>
+    matchTokens.some((matchToken) => ratio(sourceToken, matchToken) >= 68),
+  )
 }

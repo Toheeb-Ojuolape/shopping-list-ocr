@@ -1,6 +1,6 @@
 import { inferItemName, inferMerchantName } from './ocrCorrection'
 
-export type CurrencyCode = 'GBP' | 'USD' | 'EUR' | 'UNKNOWN'
+export type CurrencyCode = string
 
 export type ReceiptItem = {
   id: string
@@ -28,6 +28,7 @@ export type ReceiptExtraction = {
 
 export type ParseReceiptOptions = {
   defaultCurrency?: CurrencyCode
+  defaultPurchasedAt?: string
 }
 
 type MoneyMatch = {
@@ -59,7 +60,7 @@ export function parseReceiptText(
   const rawMerchant = detectMerchant(lines)
   const merchantInference = inferMerchantName(rawMerchant)
   const merchant = merchantInference.value
-  const purchasedAt = detectDate(rawText)
+  const purchasedAt = options.defaultPurchasedAt ?? detectDate(rawText)
   const receiptId = createReceiptId(rawText)
 
   let subtotal: number | undefined

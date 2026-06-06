@@ -28,6 +28,14 @@ test('extracts a receipt, edits rows, saves to Google Sheets, and exports CSV', 
     })
   })
 
+  await page.route('https://ipapi.co/json/', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ country_code: 'US', currency: 'USD' }),
+    })
+  })
+
   await page.route('https://sheets.googleapis.com/**', async (route) => {
     const request = route.request()
     const url = request.url()
@@ -71,7 +79,7 @@ test('extracts a receipt, edits rows, saves to Google Sheets, and exports CSV', 
     .setInputFiles(path.join(process.cwd(), 'tests/e2e/fixtures/receipt.png'))
 
   await expect(page.getByTestId('receipt-status')).toContainText('2 rows ready')
-  await expect(page.getByLabel('Store')).toHaveValue('E2e Market')
+  await expect(page.getByRole('combobox', { name: 'Store' })).toHaveValue('E2e Market')
   await expect(page.getByTestId('item-row').first().getByLabel('Item')).toHaveValue('Apples')
   await expect(page.getByTestId('item-row').nth(1).getByLabel('Item')).toHaveValue('Oat Milk')
   await expect(page.getByText('£5.50').first()).toBeVisible()
@@ -90,6 +98,8 @@ test('extracts a receipt, edits rows, saves to Google Sheets, and exports CSV', 
   expect(sheetRequests).toHaveLength(1)
   expect(sheetRequests[0]).toMatchObject({
     values: [
+      expect.arrayContaining(['']),
+      expect.arrayContaining([expect.stringMatching(/^New receipt - \d{4}-\d{2}-\d{2}$/)]),
       expect.arrayContaining(['E2e Market', 'Pink Lady Apples', 1, '', 2.55]),
       expect.arrayContaining(['E2e Market', 'Oat Milk', 1, '', 3.1]),
     ],

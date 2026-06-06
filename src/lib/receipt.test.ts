@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { mergeGeminiPayload } from './gemini'
-import { buildSheetRows, createReceiptCsv, parseSpreadsheetId } from './googleSheets'
+import {
+  buildReceiptAppendValues,
+  buildSheetRows,
+  createReceiptCsv,
+  parseSpreadsheetId,
+} from './googleSheets'
 import { parseReceiptText, sumItems } from './receipt'
 
 describe('receipt parsing', () => {
@@ -103,6 +108,17 @@ describe('receipt parsing', () => {
     expect(extraction.items.map((item) => item.name)).toEqual(['Orange', 'Rice'])
     expect(extraction.warnings).toContain('Inferred store name "Aldi" from OCR text "Aldt".')
   })
+
+  it('uses app-provided date and local currency defaults when OCR does not provide them', () => {
+    const extraction = parseReceiptText('Corner Shop\nCoffee 2.80\nTotal 2.80', {
+      defaultCurrency: 'USD',
+      defaultPurchasedAt: '2026-06-06',
+    })
+
+    expect(extraction.purchasedAt).toBe('2026-06-06')
+    expect(extraction.currency).toBe('USD')
+    expect(extraction.items[0].currency).toBe('USD')
+  })
 })
 
 describe('Gemini merge normalization', () => {
@@ -142,6 +158,30 @@ describe('sheet and CSV exports', () => {
       totalPrice: 3.25,
       receiptTotal: 6,
     })
+  })
+
+  it('adds a dated separator before each Google Sheet receipt append', () => {
+    const extraction = parseReceiptText('Grocer\nTea £3.25\nCake £2.75\nTotal £6.00', {
+      defaultCurrency: 'GBP',
+      defaultPurchasedAt: '2026-06-06',
+    })
+
+    const values = buildReceiptAppendValues(extraction, '2026-06-06T10:00:00.000Z')
+
+    expect(values[0]).toEqual(['', '', '', '', '', '', '', '', '', ''])
+    expect(values[1]).toEqual([
+      'New receipt - 2026-06-06',
+      '2026-06-06T10:00:00.000Z',
+      'Grocer',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+    ])
+    expect(values.slice(2)).toHaveLength(2)
   })
 
   it('escapes cell content in the CSV export', () => {

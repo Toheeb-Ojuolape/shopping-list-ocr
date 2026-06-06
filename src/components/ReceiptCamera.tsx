@@ -35,7 +35,7 @@ export function ReceiptCamera({ onCapture, onError }: ReceiptCameraProps) {
 
         if (videoRef.current && isMounted) {
           videoRef.current.srcObject = stream
-          void videoRef.current.play().catch(() => {
+          videoRef.current.play().catch(() => {
             if (isMounted) {
               setIsReady(false)
             }
