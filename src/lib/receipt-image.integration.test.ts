@@ -40,6 +40,7 @@ async function recognizeSampleReceiptFixture(): Promise<string> {
     path.join(tempDir, 'receipt-sparse.jpg'),
     path.join(tempDir, 'receipt-top.jpg'),
     path.join(tempDir, 'receipt-lower.jpg'),
+    path.join(tempDir, 'receipt-total.jpg'),
   ]
 
   const base = sharp(sourcePath).extract({ left: 520, top: 520, width: 2200, height: 4000 })
@@ -76,9 +77,22 @@ async function recognizeSampleReceiptFixture(): Promise<string> {
     .linear(1.8, -80)
     .sharpen()
     .toFile(variants[4])
+  await sharp(sourcePath)
+    .extract({ left: 500, top: 4200, width: 2300, height: 320 })
+    .resize({ width: 2600 })
+    .grayscale()
+    .normalize()
+    .linear(1.7, -70)
+    .sharpen()
+    .toFile(variants[5])
 
   const worker = await createWorker('eng', 1, {
+    cacheMethod: 'none',
     cachePath: path.join(os.tmpdir(), 'shopping-list-tessdata'),
+    corePath: path.join(
+      process.cwd(),
+      'node_modules/tesseract.js-core/tesseract-core-lstm.wasm.js',
+    ),
     langPath: path.join(process.cwd(), 'node_modules/@tesseract.js-data/eng/4.0.0'),
   })
   await worker.setParameters({
@@ -93,7 +107,8 @@ async function recognizeSampleReceiptFixture(): Promise<string> {
       await worker.setParameters({
         preserve_interword_spaces: '1',
         user_defined_dpi: '300',
-        tessedit_pageseg_mode: index === 2 ? PSM.SPARSE_TEXT : PSM.SINGLE_BLOCK,
+        tessedit_pageseg_mode:
+          index === 2 ? PSM.SPARSE_TEXT : index === 5 ? PSM.SINGLE_LINE : PSM.SINGLE_BLOCK,
       })
       const result = await worker.recognize(variant)
       results.push(result.data.text)

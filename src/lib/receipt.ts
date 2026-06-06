@@ -114,7 +114,7 @@ export function parseReceiptText(
       return
     }
 
-    if (totalLabels.test(line) && !subtotalLabels.test(line)) {
+    if (isTotalLine(line)) {
       total = lastValue
       return
     }
@@ -702,4 +702,17 @@ function stripQuantityAndUnitPrice(value: string): string {
 
 function dateLike(value: string): boolean {
   return /\b(?:20\d{2}|\d{1,2})[-/.]\d{1,2}[-/.](?:20\d{2}|\d{2})\b/.test(value)
+}
+
+function isTotalLine(value: string): boolean {
+  if (subtotalLabels.test(value)) {
+    return false
+  }
+
+  if (totalLabels.test(value)) {
+    return true
+  }
+
+  const compactLetters = value.toLowerCase().replace(/[^a-z]/g, '')
+  return compactLetters.includes('total') && !compactLetters.includes('subtotal')
 }

@@ -164,6 +164,20 @@ describe('receipt parsing', () => {
       totalPrice: 2.9,
     })
   })
+
+  it('detects receipt totals when OCR spaces the label letters apart', () => {
+    const extraction = parseReceiptText(
+      `
+      ALDI STORES
+      BREAD WHT TOASTIE 0.75
+      T o t a l 29.47
+      `,
+      { defaultCurrency: 'GBP' },
+    )
+
+    expect(extraction.total).toBe(29.47)
+    expect(extraction.items.some((item) => /total/i.test(item.name))).toBe(false)
+  })
 })
 
 describe('Gemini merge normalization', () => {
