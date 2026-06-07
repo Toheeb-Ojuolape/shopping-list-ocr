@@ -8,7 +8,7 @@ import { getCurrencyFromBrowserLocale, resolveLocalCurrency } from './lib/curren
 import { refineReceiptWithGemini } from './lib/gemini'
 import { getCachedGoogleSheetsAccessToken, requestGoogleSheetsAccessToken } from './lib/googleAuth'
 import { appendReceiptToGoogleSheet, downloadReceiptCsv } from './lib/googleSheets'
-import { normalizeMerchantName } from './lib/ocrCorrection'
+import { inferMerchantName } from './lib/ocrCorrection'
 import { recognizeReceiptImage } from './lib/ocr'
 import type { ReceiptExtraction, ReceiptItem } from './lib/receipt'
 import { parseReceiptText, roundMoney, sumItems } from './lib/receipt'
@@ -176,7 +176,7 @@ export function AppComponent() {
     try {
       await withToast(
         async () => {
-          const inferredMerchant = normalizeMerchantName(extraction.merchant)
+          const inferredMerchant = inferMerchantName(extraction.merchant)
           const extractionForSave = {
             ...extraction,
             merchant: inferredMerchant.value,

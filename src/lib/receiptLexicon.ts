@@ -1,4 +1,5 @@
 export const merchantLexicon = [
+  'African Shop (any)',
   'Aldi',
   'ALDI STORES',
   'Albertsons',
@@ -26,6 +27,7 @@ export const merchantLexicon = [
   'Dia',
   'Dollar General',
   'Dollar Tree',
+  'Dunelm',
   'Edeka',
   'El Corte Ingles',
   'FairPrice',

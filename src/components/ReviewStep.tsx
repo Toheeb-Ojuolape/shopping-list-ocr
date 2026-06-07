@@ -19,7 +19,7 @@ import {
   IconSend,
   IconTrash,
 } from '@tabler/icons-react'
-import { normalizeMerchantName } from '../lib/ocrCorrection'
+import { inferMerchantName } from '../lib/ocrCorrection'
 import type { ReceiptExtraction, ReceiptItem } from '../lib/receipt'
 import { merchantLexicon } from '../lib/receiptLexicon'
 import { formatMoney, today, toPositiveNumber } from '../lib/utils'
@@ -77,6 +77,7 @@ export function ReviewStep({
 }: ReviewStepProps) {
   const receiptTotal = extraction.total ?? lineTotal
   const date = extraction.purchasedAt ?? today
+  const storeOptions = getStoreOptions(extraction.merchant)
 
   return (
     <Stack component="section" className="review-screen" aria-label="Review receipt" gap="sm">
@@ -114,13 +115,17 @@ export function ReviewStep({
         <Autocomplete
           label="Store"
           classNames={fieldClassNames}
-          data={merchantLexicon}
+          data={storeOptions}
           limit={8}
           maxDropdownHeight={220}
+          placeholder="Search or type a store"
           value={extraction.merchant}
           onChange={(value) => onUpdateReceipt({ merchant: value })}
+          autoSelectOnBlur={false}
+          openOnFocus
+          clearable
           onBlur={() => {
-            const inferred = normalizeMerchantName(extraction.merchant)
+            const inferred = inferMerchantName(extraction.merchant)
             onUpdateReceipt({ merchant: inferred.value })
           }}
         />
@@ -160,6 +165,20 @@ export function ReviewStep({
       />
     </Stack>
   )
+}
+
+function getStoreOptions(currentStore: string): string[] {
+  const trimmedStore = currentStore.trim()
+  if (
+    !trimmedStore ||
+    merchantLexicon.some(
+      (merchant) => merchant.toLocaleLowerCase() === trimmedStore.toLocaleLowerCase(),
+    )
+  ) {
+    return merchantLexicon
+  }
+
+  return [trimmedStore, ...merchantLexicon]
 }
 
 function ItemList({
