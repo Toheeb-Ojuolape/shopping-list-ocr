@@ -207,7 +207,10 @@ describe('sheet and CSV exports', () => {
     const extraction = parseReceiptText('Grocer\nTea £3.25\nCake £2.75\nTotal £6.00', {
       defaultCurrency: 'GBP',
     })
-    const rows = buildSheetRows(extraction, '2026-06-06T10:00:00.000Z')
+    const rows = buildSheetRows(
+      { ...extraction, imageUrl: 'https://example.com/receipt.jpg' },
+      '2026-06-06T10:00:00.000Z',
+    )
 
     expect(rows).toHaveLength(2)
     expect(rows[0]).toMatchObject({
@@ -216,7 +219,9 @@ describe('sheet and CSV exports', () => {
       itemName: 'Tea',
       totalPrice: 3.25,
       receiptTotal: 6,
+      image: '=IMAGE("https://example.com/receipt.jpg", 1)',
     })
+    expect(rows[1].image).toBe('')
   })
 
   it('adds a dated separator before each Google Sheet receipt append', () => {
@@ -227,11 +232,12 @@ describe('sheet and CSV exports', () => {
 
     const values = buildReceiptAppendValues(extraction, '2026-06-06T10:00:00.000Z')
 
-    expect(values[0]).toEqual(['', '', '', '', '', '', '', '', '', ''])
+    expect(values[0]).toEqual(['', '', '', '', '', '', '', '', '', '', ''])
     expect(values[1]).toEqual([
       'New receipt - 2026-06-06',
       '2026-06-06T10:00:00.000Z',
       'Aldi',
+      '',
       '',
       '',
       '',
@@ -251,6 +257,22 @@ describe('sheet and CSV exports', () => {
 
     expect(csv).toContain('"A&B ""Shop"""')
     expect(csv).toContain('Milk')
+    expect(csv).not.toContain('data:image')
+  })
+
+  it('adds the receipt image URL once at the end of CSV exports', () => {
+    const extraction = parseReceiptText('Grocer\nTea £3.25\nCake £2.75\nTotal £6.00', {
+      defaultCurrency: 'GBP',
+    })
+
+    const csv = createReceiptCsv({
+      ...extraction,
+      imageDataUri: 'data:image/jpeg;base64,receipt',
+      imageUrl: 'https://example.com/receipt.jpg',
+    })
+
+    expect(csv.split('\n')[0].endsWith(',Image')).toBe(true)
+    expect(csv.match(/https:\/\/example\.com\/receipt\.jpg/g)).toHaveLength(1)
     expect(csv).not.toContain('data:image')
   })
 

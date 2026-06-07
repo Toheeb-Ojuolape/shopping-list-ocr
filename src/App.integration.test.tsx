@@ -41,7 +41,9 @@ describe('App integration', () => {
     vi.clearAllMocks()
     recognizeReceiptImageMock.mockResolvedValue({ text: receiptOcrText, confidence: 98 })
     requestGoogleSheetsAccessTokenMock.mockResolvedValue('test-access-token')
-    appendReceiptToGoogleSheetMock.mockResolvedValue(undefined)
+    appendReceiptToGoogleSheetMock.mockResolvedValue({
+      imageUrl: 'https://lh3.googleusercontent.com/d/test-receipt-image=w900',
+    })
     mockCamera()
   })
 
@@ -80,6 +82,7 @@ describe('App integration', () => {
       },
       expect.objectContaining({
         merchant: 'Fresh Mart',
+        imageDataUri: expect.stringMatching(/^data:image\/png;base64,/),
         items: expect.arrayContaining([
           expect.objectContaining({ name: 'Organic Bananas', totalPrice: 1.5 }),
         ]),
@@ -92,7 +95,11 @@ describe('App integration', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
     expect(downloadReceiptCsvMock).toHaveBeenCalledWith(
-      expect.objectContaining({ merchant: 'Fresh Mart' }),
+      expect.objectContaining({
+        merchant: 'Fresh Mart',
+        imageDataUri: expect.stringMatching(/^data:image\/png;base64,/),
+        imageUrl: 'https://lh3.googleusercontent.com/d/test-receipt-image=w900',
+      }),
     )
   })
 

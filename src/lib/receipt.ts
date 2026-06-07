@@ -24,6 +24,8 @@ export type ReceiptExtraction = {
   items: ReceiptItem[]
   rawText: string
   warnings: string[]
+  imageDataUri?: string
+  imageUrl?: string
 }
 
 export type ParseReceiptOptions = {
