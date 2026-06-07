@@ -11,7 +11,7 @@ import { appendReceiptToGoogleSheet, downloadReceiptCsv } from './lib/googleShee
 import { normalizeMerchantName } from './lib/ocrCorrection'
 import { recognizeReceiptImage } from './lib/ocr'
 import type { ReceiptExtraction, ReceiptItem } from './lib/receipt'
-import { parseReceiptText, sumItems } from './lib/receipt'
+import { parseReceiptText, roundMoney, sumItems } from './lib/receipt'
 import {
   getEnvGeminiKey,
   getEnvGoogleClientId,
@@ -26,6 +26,7 @@ import {
 type AppStep = 'capture' | 'review'
 type WorkStatus = 'idle' | 'recognizing' | 'refining' | 'ready' | 'saving' | 'error'
 
+const maxExportImageLength = 45_000
 const envGeminiKey = getEnvGeminiKey()
 const envGoogleClientId = getEnvGoogleClientId()
 const savedSheetSettings = getSavedSheetSettings()
@@ -85,8 +86,13 @@ export function AppComponent() {
             return current
           }
 
-          appliedStatus = getReadyStatusText(refined)
-          return refined
+          const refinedWithImage = {
+            ...refined,
+            imageDataUri: fallback.imageDataUri,
+            imageUrl: fallback.imageUrl,
+          }
+          appliedStatus = getReadyStatusText(refinedWithImage)
+          return refinedWithImage
         })
 
         if (appliedStatus) {
@@ -108,7 +114,7 @@ export function AppComponent() {
       setProgress(8)
 
       try {
-        const { ocrText, parsed } = await withToast(
+        const { ocrText, parsed, exportImageDataUri } = await withToast(
           async () => {
             const ocr = await recognizeReceiptImage(imageDataUri, (nextProgress) => {
               setProgress(nextProgress.progress)
@@ -121,6 +127,7 @@ export function AppComponent() {
                 defaultCurrency: localCurrency,
                 defaultPurchasedAt: getTodayIsoDate(),
               }),
+              exportImageDataUri: await prepareReceiptImageForExport(imageDataUri),
             }
           },
           {
@@ -128,14 +135,15 @@ export function AppComponent() {
             success: ({ parsed }) => getReadyStatusText(parsed),
           },
         )
-        activeReceiptIdRef.current = parsed.receiptId
+        const parsedWithImage = { ...parsed, imageDataUri: exportImageDataUri }
+        activeReceiptIdRef.current = parsedWithImage.receiptId
 
         setStatus('ready')
-        setStatusText(getReadyStatusText(parsed))
-        setExtraction(parsed)
+        setStatusText(getReadyStatusText(parsedWithImage))
+        setExtraction(parsedWithImage)
         setProgress(100)
 
-        maybeRefineWeakExtraction(ocrText, parsed)
+        maybeRefineWeakExtraction(ocrText, parsedWithImage)
       } catch (error) {
         setStatus('error')
         setStatusText(getErrorMessage(error))
@@ -186,7 +194,7 @@ export function AppComponent() {
             googleAccessToken ||
             (await requestGoogleSheetsAccessToken(envGoogleClientId, { prompt: '' }))
           setGoogleAccessToken(accessToken)
-          await appendReceiptToGoogleSheet(
+          const saveResult = await appendReceiptToGoogleSheet(
             {
               sheetUrl,
               sheetName,
@@ -194,6 +202,9 @@ export function AppComponent() {
             },
             extractionForSave,
           )
+          if (saveResult.imageUrl && saveResult.imageUrl !== extractionForSave.imageUrl) {
+            setExtraction({ ...extractionForSave, imageUrl: saveResult.imageUrl })
+          }
           saveSheetSettings({ sheetUrl, sheetName })
         },
         {
@@ -241,9 +252,14 @@ export function AppComponent() {
   function updateItem(id: string, patch: Partial<ReceiptItem>) {
     setExtraction((current) => {
       if (!current) return current
+      const items = current.items.map((item) =>
+        item.id === id ? applyItemPatch(item, patch) : item,
+      )
+
       return {
         ...current,
-        items: current.items.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+        items,
+        total: sumItems(items),
       }
     })
   }
@@ -260,17 +276,16 @@ export function AppComponent() {
         confidence: 1,
       }
 
-      return { ...current, items: [...current.items, item] }
+      const items = [...current.items, item]
+      return { ...current, items, total: sumItems(items) }
     })
   }
 
   function removeItem(id: string) {
     setExtraction((current) => {
       if (!current) return current
-      return {
-        ...current,
-        items: current.items.filter((item) => item.id !== id),
-      }
+      const items = current.items.filter((item) => item.id !== id)
+      return { ...current, items, total: sumItems(items) }
     })
   }
 
@@ -361,6 +376,39 @@ export function AppComponent() {
   )
 }
 
+function applyItemPatch(item: ReceiptItem, patch: Partial<ReceiptItem>): ReceiptItem {
+  const nextItem = { ...item, ...patch }
+  const quantityChanged = patch.quantity !== undefined
+  const unitPriceChanged = patch.unitPrice !== undefined
+  const totalPriceChanged = patch.totalPrice !== undefined
+
+  if (quantityChanged || unitPriceChanged) {
+    const quantity = Math.max(0, nextItem.quantity)
+    const unitPrice =
+      patch.unitPrice ??
+      item.unitPrice ??
+      (item.quantity > 0 ? roundMoney(item.totalPrice / item.quantity) : item.totalPrice)
+
+    return {
+      ...nextItem,
+      quantity,
+      unitPrice,
+      totalPrice: roundMoney(unitPrice * quantity),
+    }
+  }
+
+  if (totalPriceChanged) {
+    return {
+      ...nextItem,
+      totalPrice: roundMoney(nextItem.totalPrice),
+      unitPrice:
+        nextItem.quantity > 1 ? roundMoney(nextItem.totalPrice / nextItem.quantity) : undefined,
+    }
+  }
+
+  return nextItem
+}
+
 function getReadyStatusText(extraction: ReceiptExtraction): string {
   if (extraction.items.length === 0) {
     return 'No rows found'
@@ -378,4 +426,58 @@ function shouldRefineWithGemini(extraction: ReceiptExtraction): boolean {
     extraction.items.reduce((total, item) => total + item.confidence, 0) / extraction.items.length
 
   return averageConfidence < 0.72
+}
+
+async function prepareReceiptImageForExport(imageDataUri: string): Promise<string> {
+  if (!imageDataUri.startsWith('data:image/') || imageDataUri.length <= maxExportImageLength) {
+    return imageDataUri
+  }
+
+  try {
+    const image = await loadImage(imageDataUri)
+    const sourceWidth = image.naturalWidth || image.width
+    const sourceHeight = image.naturalHeight || image.height
+    const canvas = document.createElement('canvas')
+    const context = canvas.getContext('2d')
+    if (!sourceWidth || !sourceHeight || !context) {
+      return imageDataUri
+    }
+
+    let smallestImage = imageDataUri
+    const maxWidths = [1000, 800, 640, 520, 420, 320, 260, 200]
+    const qualities = [0.82, 0.7, 0.58, 0.46, 0.34, 0.26]
+
+    for (const maxWidth of maxWidths) {
+      const scale = Math.min(1, maxWidth / sourceWidth)
+      canvas.width = Math.max(1, Math.round(sourceWidth * scale))
+      canvas.height = Math.max(1, Math.round(sourceHeight * scale))
+
+      for (const quality of qualities) {
+        context.fillStyle = '#ffffff'
+        context.fillRect(0, 0, canvas.width, canvas.height)
+        context.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+        const nextImage = canvas.toDataURL('image/jpeg', quality)
+        if (nextImage.length < smallestImage.length) {
+          smallestImage = nextImage
+        }
+        if (nextImage.length <= maxExportImageLength) {
+          return nextImage
+        }
+      }
+    }
+
+    return smallestImage
+  } catch {
+    return imageDataUri
+  }
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error('Could not prepare receipt image for export.'))
+    image.src = src
+  })
 }

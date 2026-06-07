@@ -41,7 +41,9 @@ describe('App integration', () => {
     vi.clearAllMocks()
     recognizeReceiptImageMock.mockResolvedValue({ text: receiptOcrText, confidence: 98 })
     requestGoogleSheetsAccessTokenMock.mockResolvedValue('test-access-token')
-    appendReceiptToGoogleSheetMock.mockResolvedValue(undefined)
+    appendReceiptToGoogleSheetMock.mockResolvedValue({
+      imageUrl: 'https://lh3.googleusercontent.com/d/test-receipt-image=w900',
+    })
     mockCamera()
   })
 
@@ -63,6 +65,7 @@ describe('App integration', () => {
       target: { value: 'Organic Bananas' },
     })
     fireEvent.change(within(firstRow).getByLabelText('Price'), { target: { value: '1.50' } })
+    expect(screen.getByText('£6.00')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('Google Sheet link'), {
       target: { value: 'https://docs.google.com/spreadsheets/d/test-sheet-id/edit' },
@@ -79,6 +82,7 @@ describe('App integration', () => {
       },
       expect.objectContaining({
         merchant: 'Fresh Mart',
+        imageDataUri: expect.stringMatching(/^data:image\/png;base64,/),
         items: expect.arrayContaining([
           expect.objectContaining({ name: 'Organic Bananas', totalPrice: 1.5 }),
         ]),
@@ -91,8 +95,46 @@ describe('App integration', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
     expect(downloadReceiptCsvMock).toHaveBeenCalledWith(
-      expect.objectContaining({ merchant: 'Fresh Mart' }),
+      expect.objectContaining({
+        merchant: 'Fresh Mart',
+        imageDataUri: expect.stringMatching(/^data:image\/png;base64,/),
+        imageUrl: 'https://lh3.googleusercontent.com/d/test-receipt-image=w900',
+      }),
     )
+  })
+
+  it('updates the receipt total when rows are added, edited, or removed', async () => {
+    render(<App />)
+
+    uploadReceiptImage()
+
+    await waitFor(() =>
+      expect(screen.getByTestId('receipt-status')).toHaveTextContent('2 rows ready'),
+    )
+    expect(screen.getByText('£5.75')).toBeInTheDocument()
+
+    const firstRow = screen.getAllByTestId('item-row')[0]
+    fireEvent.change(within(firstRow).getByLabelText('Price'), { target: { value: '1.50' } })
+    expect(screen.getByText('£6.00')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add missing item' }))
+    const addedRow = screen.getAllByTestId('item-row').at(-1)
+    expect(addedRow).toBeDefined()
+    fireEvent.change(within(addedRow as HTMLElement).getByLabelText('Item'), {
+      target: { value: 'Coffee' },
+    })
+    fireEvent.change(within(addedRow as HTMLElement).getByLabelText('Price'), {
+      target: { value: '2.00' },
+    })
+    expect(screen.getByText('£8.00')).toBeInTheDocument()
+
+    fireEvent.change(within(addedRow as HTMLElement).getByLabelText('Qty'), {
+      target: { value: '2' },
+    })
+    expect(screen.getByText('£10.00')).toBeInTheDocument()
+
+    fireEvent.click(within(addedRow as HTMLElement).getByRole('button', { name: 'Remove Coffee' }))
+    expect(screen.getByText('£6.00')).toBeInTheDocument()
   })
 
   it('shows a useful error when saving without a Google Sheets link', async () => {

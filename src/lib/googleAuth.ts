@@ -1,5 +1,8 @@
 const googleIdentityScriptUrl = 'https://accounts.google.com/gsi/client'
-const sheetsScope = 'https://www.googleapis.com/auth/spreadsheets'
+const googleWorkspaceScope = [
+  'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/drive.file',
+].join(' ')
 
 type TokenResponse = {
   access_token?: string
@@ -32,8 +35,8 @@ declare global {
 }
 
 let loadGoogleIdentityPromise: Promise<void> | undefined
-const cachedTokenKey = 'receipt-google-access-token'
-const cachedTokenExpiryKey = 'receipt-google-access-token-expires-at'
+const cachedTokenKey = 'receipt-google-workspace-access-token'
+const cachedTokenExpiryKey = 'receipt-google-workspace-access-token-expires-at'
 
 export type GoogleTokenRequestOptions = {
   prompt?: 'consent' | ''
@@ -70,7 +73,7 @@ export async function requestGoogleSheetsAccessToken(
   return new Promise((resolve, reject) => {
     const tokenClient = window.google?.accounts?.oauth2?.initTokenClient({
       client_id: trimmedClientId,
-      scope: sheetsScope,
+      scope: googleWorkspaceScope,
       callback: (response) => {
         if (response.error) {
           reject(new Error(response.error_description || response.error))

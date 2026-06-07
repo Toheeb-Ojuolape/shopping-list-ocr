@@ -173,45 +173,51 @@ function ItemList({
 }) {
   return (
     <Stack aria-label="Extracted items">
-      {items.map((item) => (
-        <Paper className="native-row" data-testid="item-row" key={item.id} shadow="sm">
-          <TextInput
-            label="Item"
-            classNames={fieldClassNames}
-            className="item-title-field"
-            value={item.name}
-            onChange={(event) => onUpdateItem(item.id, { name: event.target.value })}
-          />
-          <SimpleGrid className="price-pair" cols={2} spacing="sm">
-            <NumberInput
-              label="Qty"
+      {items.map((item) => {
+        const editablePrice = item.unitPrice ?? item.totalPrice
+
+        return (
+          <Paper className="native-row" data-testid="item-row" key={item.id} shadow="sm">
+            <TextInput
+              label="Item"
               classNames={fieldClassNames}
-              min={0}
-              value={item.quantity}
-              onChange={(value) => onUpdateItem(item.id, { quantity: toPositiveNumber(value, 1) })}
+              className="item-title-field"
+              value={item.name}
+              onChange={(event) => onUpdateItem(item.id, { name: event.target.value })}
             />
-            <NumberInput
-              label="Price"
-              classNames={fieldClassNames}
-              min={0}
-              decimalScale={2}
-              value={item.totalPrice}
-              onChange={(value) =>
-                onUpdateItem(item.id, { totalPrice: toPositiveNumber(value, 0) })
-              }
-            />
-          </SimpleGrid>
-          <ActionIcon
-            variant="subtle"
-            color="gray"
-            className="remove-row"
-            aria-label={`Remove ${item.name}`}
-            onClick={() => onRemoveItem(item.id)}
-          >
-            <IconTrash size={18} />
-          </ActionIcon>
-        </Paper>
-      ))}
+            <SimpleGrid className="price-pair" cols={2} spacing="sm">
+              <NumberInput
+                label="Qty"
+                classNames={fieldClassNames}
+                min={0}
+                value={item.quantity}
+                onChange={(value) =>
+                  onUpdateItem(item.id, { quantity: toPositiveNumber(value, 1) })
+                }
+              />
+              <NumberInput
+                label="Price"
+                classNames={fieldClassNames}
+                min={0}
+                decimalScale={2}
+                value={editablePrice}
+                onChange={(value) =>
+                  onUpdateItem(item.id, { unitPrice: toPositiveNumber(value, 0) })
+                }
+              />
+            </SimpleGrid>
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              className="remove-row"
+              aria-label={`Remove ${item.name}`}
+              onClick={() => onRemoveItem(item.id)}
+            >
+              <IconTrash size={18} />
+            </ActionIcon>
+          </Paper>
+        )
+      })}
     </Stack>
   )
 }

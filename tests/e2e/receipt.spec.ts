@@ -87,6 +87,7 @@ test('extracts a receipt, edits rows, saves to Google Sheets, and exports CSV', 
   const firstRow = page.getByTestId('item-row').first()
   await firstRow.getByLabel('Item').fill('Pink Lady Apples')
   await firstRow.getByLabel('Price').fill('2.55')
+  await expect(page.getByText('£5.65').first()).toBeVisible()
 
   await page
     .getByLabel('Google Sheet link')
