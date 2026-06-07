@@ -60,6 +60,11 @@ describe('App integration', () => {
     expect(screen.getByDisplayValue('Oat Milk')).toBeInTheDocument()
     expect(screen.getByText('£5.75')).toBeInTheDocument()
 
+    const storeInput = screen.getByRole('combobox', { name: 'Store' })
+    fireEvent.change(storeInput, { target: { value: 'Corner Palace' } })
+    fireEvent.blur(storeInput)
+    expect(screen.getByDisplayValue('Corner Palace')).toBeInTheDocument()
+
     const firstRow = screen.getAllByTestId('item-row')[0]
     fireEvent.change(within(firstRow).getByLabelText('Item'), {
       target: { value: 'Organic Bananas' },
@@ -81,7 +86,7 @@ describe('App integration', () => {
         accessToken: 'test-access-token',
       },
       expect.objectContaining({
-        merchant: 'Fresh Mart',
+        merchant: 'Corner Palace',
         imageDataUri: expect.stringMatching(/^data:image\/png;base64,/),
         items: expect.arrayContaining([
           expect.objectContaining({ name: 'Organic Bananas', totalPrice: 1.5 }),
@@ -96,7 +101,7 @@ describe('App integration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
     expect(downloadReceiptCsvMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        merchant: 'Fresh Mart',
+        merchant: 'Corner Palace',
         imageDataUri: expect.stringMatching(/^data:image\/png;base64,/),
         imageUrl: 'https://lh3.googleusercontent.com/d/test-receipt-image=w900',
       }),
